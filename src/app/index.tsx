@@ -1,98 +1,31 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Redirect } from "expo-router";
+import { useAuth } from "@/lib/authContext";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+// Esto reemplaza el archivo que dejó el template de Expo por defecto (el que mostraba "Welcome to
+// Expo"). Sin este archivo expo-router no tiene una pantalla clara para la ruta raíz "/", así que
+// aunque _layout.tsx arme la navegación protegida con Stack.Protected, el router seguía resolviendo
+// "/" contra este index.tsx suelto en vez de pasar por la lógica de sesión. Ahora simplemente
+// redirige a /login o a las tabs según haya sesión guardada, usando el mismo estado de auth que ya
+// lee _layout.tsx.
+//
+// Bug real encontrado y arreglado (21/09): redirigir con href="/(tabs)" a secas SIEMPRE lleva a la
+// pantalla llamada "index" adentro de ese grupo (Explorar) — expo-router resuelve la ruta del
+// grupo contra el archivo literal "index.tsx", sin importar el `initialRouteName` que le pasamos a
+// <Tabs> en (tabs)/_layout.tsx (ese prop solo aplica cuando el navegador se monta solo, no cuando
+// se navega a la ruta del grupo con un href explícito como este). Por eso un Prestador terminaba
+// en "Explorar" (oculta para su rol, pero igual quedaba "parado" ahí) en vez de en "Inicio". Fix:
+// apuntar al href completo de la pantalla que corresponda según el rol.
+//
+// 21/09: desde que el Cliente también tiene pestaña "Inicio" (ver (tabs)/_layout.tsx e
+// (tabs)/inicio.tsx), los DOS roles aterrizan ahí al iniciar sesión — antes el Cliente entraba
+// directo a "Explorar". Por el mismo motivo del bug de arriba, hay que apuntar al href completo
+// ("/(tabs)/inicio") para los dos roles, no alcanza con cambiar initialRouteName en el layout.
+export default function Index() {
+  const { usuario, cargando } = useAuth();
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
+  if (cargando) return null;
+
+  if (!usuario) return <Redirect href="/login" />;
+
+  return <Redirect href="/(tabs)/inicio" />;
 }
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});
