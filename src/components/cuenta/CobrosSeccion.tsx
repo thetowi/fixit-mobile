@@ -51,7 +51,7 @@ export default function CobrosSeccion({ perfil, onPerfilActualizado }: Props) {
       <Text style={[styles.titulo, { color: colors.ink }]}>Cobros</Text>
       <Text style={{ color: colors.inkMuted, fontSize: 12, marginBottom: 14 }}>
         Cargá el CBU o alias donde querés que te transfiramos tu parte de cada trabajo, una vez que
-        el cliente lo marca como completado. La transferencia la hace un Admin de FixIt a mano.
+        el cliente lo marca como completado. La transferencia la hace un Admin de Oficy a mano.
       </Text>
 
       <View style={{ gap: 12 }}>

@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import { apiFetch, ApiError } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 // Notificaciones push nativas (Expo Push) — equivalente mobile del Web Push que ya tiene
 // fixit-web (lib/push.ts). Importante: desde el SDK ~53 de Expo, las notificaciones push remotas
@@ -70,27 +70,14 @@ export async function registrarNotificacionesPush(): Promise<void> {
 
     const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync({ projectId });
 
-    // TEMP (debug 21/09): confirmar que el token se obtuvo bien antes de mandarlo al backend.
-    if (__DEV__) {
-      console.log("[FixIt] Expo push token obtenido:", expoPushToken);
-    }
-
     await apiFetch("/api/push/expo/registrar", {
       method: "POST",
       body: JSON.stringify({ expoPushToken }),
     });
-  } catch (error) {
+  } catch {
     // Best-effort: sin permiso, sin dev build, sin conexión, lo que sea — la app tiene que seguir
-    // funcionando igual, solo sin push nativo. Se loguea nada más en desarrollo, para no ensuciar
-    // la consola de producción con algo que hoy es esperable (Expo Go no soporta esto).
-    if (__DEV__) {
-      // TEMP (debug 21/09): si es un error de la API, mostrar el status HTTP real — el mensaje
-      // genérico "Ocurrió un error" no alcanza para saber si es 401, 404 o 500.
-      if (error instanceof ApiError) {
-        console.warn(`[FixIt] No se pudo registrar el push nativo (HTTP ${error.status}):`, error.message);
-      } else {
-        console.warn("[FixIt] No se pudo registrar el push nativo:", error);
-      }
-    }
+    // funcionando igual, solo sin push nativo. No se loguea nada acá a propósito (ya se confirmó
+    // funcionando de punta a punta el 21/09) — si hace falta diagnosticar un problema puntual en el
+    // futuro, agregar logging temporal ahí y sacarlo de nuevo al terminar, en vez de dejarlo fijo.
   }
 }

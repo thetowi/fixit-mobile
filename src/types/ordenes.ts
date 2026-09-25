@@ -19,6 +19,22 @@ export interface Orden {
   montoTotal: number;
   comisionPlataforma: number;
   creadoEn: string;
+  // Agregados 24/09 para el aviso de "Hoy" en el Inicio del Cliente.
+  fechaHoraProgramada: string | null;
+  duracionMinutos: number | null;
   yaCalificada: boolean;
   conversacionId: string;
+}
+
+// "Trabajo en curso" (24/09): espejo de FixIt.Application.DTOs.Ordenes.OrdenEnCursoResponse.
+export interface OrdenEnCurso {
+  ordenId: string;
+  categoriaNombre: string;
+  categoriaIcono: string | null;
+  descripcion: string;
+  clienteId: string;
+  clienteNombreCompleto: string;
+  prestadorId: string;
+  prestadorNombreCompleto: string;
+  iniciadoEn: string;
 }

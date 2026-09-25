@@ -110,7 +110,7 @@ export default function LoginScreen() {
           <Text style={[styles.eyebrow, { color: colors.copper }]}>UN PASO MÁS</Text>
           <Text style={[styles.titulo, { color: colors.ink }]}>Hola, {pendienteDeRol.nombre}</Text>
           <Text style={[styles.subtitulo, { color: colors.inkMuted, marginBottom: 24 }]}>
-            Contanos qué querés hacer en FixIt.
+            Contanos qué querés hacer en Oficy.
           </Text>
 
           {(["cliente", "prestador"] as const).map((rol) => (
@@ -162,7 +162,7 @@ export default function LoginScreen() {
           <View style={[styles.logoBox, { backgroundColor: colors.nav }]}>
             <Wrench size={22} color={colors.copper} strokeWidth={2.2} />
           </View>
-          <Text style={[styles.marcaTexto, { color: colors.ink }]}>FixIt</Text>
+          <Text style={[styles.marcaTexto, { color: colors.ink }]}>Oficy</Text>
         </View>
 
         <Text style={[styles.subtitulo, { color: colors.inkMuted }]}>

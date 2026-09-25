@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { CalendarDays, Search } from "lucide-react-native";
+import { Bell, CalendarDays, Search } from "lucide-react-native";
 import { apiFetch, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/authContext";
 import { useFixitColors } from "@/hooks/use-fixit-colors";
@@ -124,6 +124,14 @@ function InicioPrestador() {
   const trabajosHoy = trabajosSemana
     .filter((t) => esMismoDia(new Date(t.fechaHoraProgramada!), hoy))
     .sort((a, b) => new Date(a.fechaHoraProgramada!).getTime() - new Date(b.fechaHoraProgramada!).getTime());
+
+  // Aviso destacado (24/09, a pedido del usuario: "que destaque mucho más cuando hay un
+  // trabajo... visualmente más llamativo, tipo alerta"). Se calcula aparte de trabajosHoy (que
+  // sigue alimentando la lista de abajo sin cambios) para no mostrar como "aviso" algo cancelado
+  // o que ya se completó, aunque haya sido programado para hoy.
+  const trabajosHoyActivos = trabajosHoy.filter((t) => t.estado !== "Cancelado" && t.estado !== "Completado");
+  const avisoHoy = trabajosHoyActivos[0] ?? null;
+  const masTrabajosHoy = trabajosHoyActivos.length - 1;
   const proximosSemana = trabajosSemana
     .filter((t) => {
       const f = new Date(t.fechaHoraProgramada!);
@@ -158,6 +166,27 @@ function InicioPrestador() {
         <Text style={[styles.error, { color: "#B3261E" }]}>{error}</Text>
       ) : (
         <>
+          {avisoHoy && (
+            <Pressable
+              onPress={() => router.push("/agenda")}
+              style={[styles.avisoHoy, { backgroundColor: colors.safety }]}
+            >
+              <View style={styles.avisoIcono}>
+                <Bell color={colors.ink} size={22} strokeWidth={2.2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.avisoTitulo, { color: colors.ink }]} numberOfLines={1}>
+                  Hoy visitas a {avisoHoy.clienteNombreCompleto}
+                </Text>
+                <Text style={[styles.avisoSubtitulo, { color: colors.ink }]} numberOfLines={1}>
+                  {avisoHoy.descripcion || avisoHoy.categoriaNombre} ·{" "}
+                  {new Date(avisoHoy.fechaHoraProgramada!).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                  {masTrabajosHoy > 0 ? ` · +${masTrabajosHoy} más hoy` : ""}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+
           <View style={styles.filaStats}>
             <View style={[styles.tarjetaStat, { backgroundColor: colors.surface }]}>
               <Text style={[styles.statNumero, { color: colors.copper }]}>{trabajosSemana.length}</Text>
@@ -331,6 +360,22 @@ function InicioCliente() {
 
   const fechaHoyTexto = capitalizar(new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }));
 
+  // Aviso destacado "Hoy te visita..." (24/09) — mismo criterio que el del Prestador (ver
+  // InicioPrestador más arriba), calculado acá a partir de /api/ordenes/mias en vez de la agenda
+  // del prestador (esta pantalla es la del Cliente).
+  const hoy = new Date();
+  const trabajosHoyActivos = ordenes
+    .filter(
+      (o) =>
+        o.fechaHoraProgramada &&
+        esMismoDia(new Date(o.fechaHoraProgramada), hoy) &&
+        o.estado !== "Cancelado" &&
+        o.estado !== "Completado"
+    )
+    .sort((a, b) => new Date(a.fechaHoraProgramada!).getTime() - new Date(b.fechaHoraProgramada!).getTime());
+  const avisoHoy = trabajosHoyActivos[0] ?? null;
+  const masTrabajosHoy = trabajosHoyActivos.length - 1;
+
   if (cargando) {
     return (
       <View style={[styles.centrado, { backgroundColor: colors.paper }]}>
@@ -355,6 +400,27 @@ function InicioCliente() {
         <Text style={[styles.error, { color: "#B3261E" }]}>{error}</Text>
       ) : (
         <>
+          {avisoHoy && (
+            <Pressable
+              onPress={() => router.push("/ordenes")}
+              style={[styles.avisoHoy, { backgroundColor: colors.safety }]}
+            >
+              <View style={styles.avisoIcono}>
+                <Bell color={colors.ink} size={22} strokeWidth={2.2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.avisoTitulo, { color: colors.ink }]} numberOfLines={1}>
+                  Hoy te visita {avisoHoy.prestadorNombreCompleto}
+                </Text>
+                <Text style={[styles.avisoSubtitulo, { color: colors.ink }]} numberOfLines={1}>
+                  {avisoHoy.descripcion || avisoHoy.categoriaNombre} ·{" "}
+                  {new Date(avisoHoy.fechaHoraProgramada!).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                  {masTrabajosHoy > 0 ? ` · +${masTrabajosHoy} más hoy` : ""}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+
           <Pressable
             onPress={() => router.push("/(tabs)")}
             style={[styles.atajoBuscar, { backgroundColor: colors.copper }]}
@@ -416,6 +482,30 @@ const styles = StyleSheet.create({
   saludoNombre: { fontSize: 24, fontWeight: "800", lineHeight: 30 },
   fechaHoy: { fontSize: 13, fontWeight: "500", marginTop: 2 },
   error: { marginHorizontal: 20, marginTop: 16, fontSize: 14, fontWeight: "500" },
+  avisoHoy: {
+    marginHorizontal: 20,
+    marginTop: 18,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+  },
+  avisoIcono: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avisoTitulo: { fontSize: 15.5, fontWeight: "800" },
+  avisoSubtitulo: { fontSize: 12.5, fontWeight: "600", marginTop: 2, opacity: 0.85 },
   filaStats: { flexDirection: "row", gap: 12, paddingHorizontal: 20, paddingTop: 16 },
   tarjetaStat: {
     flex: 1,

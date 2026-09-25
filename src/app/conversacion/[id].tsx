@@ -675,7 +675,16 @@ function BurbujaMensaje({
           <Text style={{ color: colors.ink, fontSize: 26, fontWeight: "700" }}>${m.montoOferta!.toLocaleString("es-AR")}</Text>
 
           {m.ofertaPagada ? (
-            <Text style={{ color: "#059669", fontSize: 12, marginTop: 10, fontWeight: "600" }}>✓ Esta oferta ya fue pagada</Text>
+            <>
+              <Text style={{ color: "#059669", fontSize: 12, marginTop: 10, fontWeight: "600" }}>✓ Esta oferta ya fue pagada</Text>
+              {m.ofertaAgendadaEn && (
+                <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 4 }}>
+                  Agendada el{" "}
+                  {new Date(m.ofertaAgendadaEn).toLocaleDateString("es-AR", { day: "numeric", month: "short" })} a las{" "}
+                  {new Date(m.ofertaAgendadaEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                </Text>
+              )}
+            </>
           ) : (
             <>
               {!m.ofertaVigente && (

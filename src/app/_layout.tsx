@@ -4,6 +4,8 @@ import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/lib/authContext";
 import { ConteoNoLeidosProvider } from "@/lib/conteoNoLeidosContext";
+import { ActividadOrdenesProvider } from "@/lib/actividadOrdenesContext";
+import { TrabajoEnCursoProvider } from "@/lib/trabajoEnCursoContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -51,7 +53,11 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <ConteoNoLeidosProvider>
-          <NavegacionSegunSesion />
+          <ActividadOrdenesProvider>
+            <TrabajoEnCursoProvider>
+              <NavegacionSegunSesion />
+            </TrabajoEnCursoProvider>
+          </ActividadOrdenesProvider>
         </ConteoNoLeidosProvider>
       </AuthProvider>
     </SafeAreaProvider>
