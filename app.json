@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "y",
+      "bundleIdentifier": "com.oficy.fixitmobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
