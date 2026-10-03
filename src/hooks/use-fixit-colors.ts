@@ -1,10 +1,10 @@
-import { useColorScheme } from "react-native";
 import { Colors, ThemeColors } from "@/constants/colors";
+import { useTema } from "@/lib/themeContext";
 
-// Sigue el modo oscuro/claro del sistema operativo del celular directamente (no hay un toggle
-// manual como en la web todavía) — es lo estándar en apps nativas: el usuario ya eligió su
-// preferencia una vez, a nivel del teléfono entero.
+// Toggle manual agregado (03/10, ver lib/themeContext.tsx) — antes seguía useColorScheme() del
+// sistema de forma directa. Ahora delega en el ThemeProvider: sigue al sistema en vivo hasta que
+// el usuario elige algo manualmente en Mi cuenta, y a partir de ahí esa elección manda.
 export function useFixitColors(): ThemeColors {
-  const scheme = useColorScheme();
-  return scheme === "dark" ? Colors.dark : Colors.light;
+  const { tema } = useTema();
+  return tema === "oscuro" ? Colors.dark : Colors.light;
 }

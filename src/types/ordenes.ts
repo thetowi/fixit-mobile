@@ -24,6 +24,9 @@ export interface Orden {
   duracionMinutos: number | null;
   yaCalificada: boolean;
   conversacionId: string;
+  // Pausar trabajo en curso (03/10, ver backend Orden.PausadoEn).
+  pausadoEn?: string | null;
+  notaPausa?: string | null;
 }
 
 // "Trabajo en curso" (24/09): espejo de FixIt.Application.DTOs.Ordenes.OrdenEnCursoResponse.
@@ -37,4 +40,8 @@ export interface OrdenEnCurso {
   prestadorId: string;
   prestadorNombreCompleto: string;
   iniciadoEn: string;
+  // Pausar trabajo en curso (03/10) — pausadoEn != null congela el timer y muestra el estado
+  // "Pausado" en vez de "en vivo" (ver TrabajoEnCursoOverlay.tsx).
+  pausadoEn: string | null;
+  notaPausa: string | null;
 }

@@ -6,6 +6,8 @@ import { AuthProvider, useAuth } from "@/lib/authContext";
 import { ConteoNoLeidosProvider } from "@/lib/conteoNoLeidosContext";
 import { ActividadOrdenesProvider } from "@/lib/actividadOrdenesContext";
 import { TrabajoEnCursoProvider } from "@/lib/trabajoEnCursoContext";
+import { NotificacionesProvider } from "@/lib/notificacionesContext";
+import { ThemeProvider } from "@/lib/themeContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,13 +31,18 @@ function NavegacionSegunSesion() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={!usuario}>
+        <Stack.Screen name="bienvenida" />
         <Stack.Screen name="login" />
       </Stack.Protected>
       <Stack.Protected guard={!!usuario}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="conversacion/[id]" />
         <Stack.Screen name="prestador/[id]" />
+        {/* Agregada 03/10 junto con la pantalla — se había quedado afuera del Stack al crearla. */}
+        <Stack.Screen name="cliente/[id]" />
         <Stack.Screen name="explorar/[categoriaId]" />
+        {/* Centro de notificaciones (03/10, a pedido del usuario) — ver app/notificaciones.tsx */}
+        <Stack.Screen name="notificaciones" />
       </Stack.Protected>
     </Stack>
   );
@@ -51,15 +58,19 @@ export default function RootLayout() {
   // otras) recibe el valor real y actualizado de los insets del dispositivo.
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <ConteoNoLeidosProvider>
-          <ActividadOrdenesProvider>
-            <TrabajoEnCursoProvider>
-              <NavegacionSegunSesion />
-            </TrabajoEnCursoProvider>
-          </ActividadOrdenesProvider>
-        </ConteoNoLeidosProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ConteoNoLeidosProvider>
+            <ActividadOrdenesProvider>
+              <TrabajoEnCursoProvider>
+                <NotificacionesProvider>
+                  <NavegacionSegunSesion />
+                </NotificacionesProvider>
+              </TrabajoEnCursoProvider>
+            </ActividadOrdenesProvider>
+          </ConteoNoLeidosProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

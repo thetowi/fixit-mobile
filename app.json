@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Oficy",
+    "name": "fixit-mobile",
     "slug": "fixit-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,9 +9,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.oficy.fixitmobile",
+      "bundleIdentifier": "ar.oficy.fixitmobile",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Oficy usa la camara para que puedas sacar fotos y videos en el chat con tu cliente o prestador.",
+        "NSMicrophoneUsageDescription": "Oficy usa el microfono para que puedas grabar audios en el chat.",
+        "NSPhotoLibraryUsageDescription": "Oficy usa tus fotos para que puedas adjuntar imagenes en el chat y en tus trabajos realizados.",
+        "NSLocationWhenInUseUsageDescription": "Oficy usa tu ubicacion para configurar tu zona de cobertura como prestador."
       }
     },
     "android": {
@@ -29,7 +33,6 @@
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "package": "com.eltowi.fixitmobile",
-      "googleServicesFile": "./google-services.json",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyA8XdIR4rR6pMKGox_Z3DmaXXOFz4hQGH8"
@@ -55,7 +58,12 @@
       "expo-audio",
       "expo-video",
       "expo-notifications",
-      "@react-native-google-signin/google-signin"
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.255386234536-r49pq3ebacifsjopl7kcas366g6k82va"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

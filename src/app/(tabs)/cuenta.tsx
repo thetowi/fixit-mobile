@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,12 +10,15 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LogOut } from "lucide-react-native";
+import { LogOut, Moon, Sun } from "lucide-react-native";
 import { apiFetch, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/authContext";
 import { useFixitColors } from "@/hooks/use-fixit-colors";
+import { useTema } from "@/lib/themeContext";
 import { PerfilPropio } from "@/types/perfilPropio";
+import { RepostoPendiente } from "@/types/repostos";
 import PerfilSeccion from "@/components/cuenta/PerfilSeccion";
 import ServiciosSeccion from "@/components/cuenta/ServiciosSeccion";
 import AcercaSeccion from "@/components/cuenta/AcercaSeccion";
@@ -44,11 +48,20 @@ const SECCIONES: { id: Seccion; label: string }[] = [
 // para no terminar con un solo archivo de 50KB como el original.
 export default function CuentaScreen() {
   const colors = useFixitColors();
+  const router = useRouter();
+  const { tema, alternarTema } = useTema();
   const { cerrarSesion } = useAuth();
   const insets = useSafeAreaInsets();
   const [perfil, setPerfil] = useState<PerfilPropio | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [seccion, setSeccion] = useState<Seccion>("perfil");
+
+  // "Repostear" fotos de reseña (03/10, a pedido del usuario: "no está bien aplicada" — el backend
+  // y la web ya tenían esto completo, pero mobile solo tenía el botón de "Pedir permiso" del
+  // prestador en prestador/[id].tsx; el cliente no tenía forma de ver ni responder el pedido desde
+  // mobile). Espejo de la bandeja de fixit-web/app/cuenta/page.tsx (pendientesRepost).
+  const [pendientesRepost, setPendientesRepost] = useState<RepostoPendiente[]>([]);
+  const [respondiendoRepost, setRespondiendoRepost] = useState<string | null>(null);
 
   useEffect(() => {
     cargarPerfil();
@@ -58,8 +71,28 @@ export default function CuentaScreen() {
     try {
       const data = await apiFetch<PerfilPropio>("/api/usuarios/perfil");
       setPerfil(data);
+      if (data.rol === "Cliente") {
+        apiFetch<RepostoPendiente[]>("/api/repostos/pendientes")
+          .then(setPendientesRepost)
+          .catch(() => {});
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al cargar tu perfil");
+    }
+  }
+
+  async function handleResponderRepost(calificacionFotoId: string, aprobar: boolean) {
+    setRespondiendoRepost(calificacionFotoId);
+    try {
+      await apiFetch(`/api/repostos/${calificacionFotoId}/responder`, {
+        method: "PUT",
+        body: JSON.stringify({ aprobar }),
+      });
+      setPendientesRepost((prev) => prev.filter((p) => p.calificacionFotoId !== calificacionFotoId));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Error al responder el pedido");
+    } finally {
+      setRespondiendoRepost(null);
     }
   }
 
@@ -89,6 +122,58 @@ export default function CuentaScreen() {
       <Text style={[styles.h1, { color: colors.ink }]}>
         {perfil.nombre} {perfil.apellido}
       </Text>
+
+      {/* Acceso al perfil público (03/10, a pedido del usuario: "como accede el prestador a ver
+          la reseña que le dejó su cliente" — las reseñas viven en prestador/[id], pero no había
+          ningún link desde la app hacia el propio perfil). */}
+      {esPrestador && (
+        <Pressable onPress={() => router.push(`/prestador/${perfil.id}`)} style={{ marginBottom: 14 }}>
+          <Text style={{ color: colors.copper, fontSize: 13, fontWeight: "600" }}>Ver mi perfil público →</Text>
+        </Pressable>
+      )}
+
+      {!esPrestador && pendientesRepost.length > 0 && (
+        <View style={[styles.tarjetaRepost, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={{ color: colors.ink, fontWeight: "600", fontSize: 13 }}>Te pidieron mostrar una foto tuya</Text>
+          <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 2, marginBottom: 10 }}>
+            Un prestador quiere mostrar, como trabajo propio en su perfil, una foto que subiste en una reseña. Vos
+            decidís si se la das.
+          </Text>
+          <View style={{ gap: 8 }}>
+            {pendientesRepost.map((p) => (
+              <View key={p.calificacionFotoId} style={[styles.filaRepost, { borderColor: colors.border }]}>
+                <Image source={{ uri: p.url }} style={styles.fotoRepost} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: colors.ink, fontSize: 12 }} numberOfLines={1}>
+                    <Text style={{ fontWeight: "600" }}>{p.prestadorNombreCompleto}</Text> · {p.categoriaNombre}
+                  </Text>
+                  {p.comentarioCalificacion && (
+                    <Text style={{ color: colors.inkMuted, fontSize: 11 }} numberOfLines={1}>
+                      “{p.comentarioCalificacion}”
+                    </Text>
+                  )}
+                </View>
+                <View style={{ gap: 6 }}>
+                  <Pressable
+                    onPress={() => handleResponderRepost(p.calificacionFotoId, true)}
+                    disabled={respondiendoRepost === p.calificacionFotoId}
+                    style={[styles.botonPermitir, { backgroundColor: colors.copper, opacity: respondiendoRepost === p.calificacionFotoId ? 0.5 : 1 }]}
+                  >
+                    <Text style={{ color: colors.paper, fontSize: 11, fontWeight: "600" }}>Permitir</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleResponderRepost(p.calificacionFotoId, false)}
+                    disabled={respondiendoRepost === p.calificacionFotoId}
+                    style={[styles.botonNoPermitir, { borderColor: colors.border, opacity: respondiendoRepost === p.calificacionFotoId ? 0.5 : 1 }]}
+                  >
+                    <Text style={{ color: colors.ink, fontSize: 11 }}>No permitir</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
       {esPrestador && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={{ gap: 8 }}>
@@ -135,6 +220,16 @@ export default function CuentaScreen() {
         {esPrestador && seccion === "ganancias" && <GananciasSeccion />}
       </View>
 
+      {/* Toggle manual de tema (03/10, a pedido del usuario) — hasta ahora la app solo seguía el
+          modo claro/oscuro del sistema (ver lib/themeContext.tsx). Visible para Cliente y
+          Prestador por igual, por eso vive acá afuera de las secciones del Prestador. */}
+      <Pressable onPress={alternarTema} style={[styles.botonTema, { borderColor: colors.border }]}>
+        {tema === "oscuro" ? <Sun size={16} color={colors.ink} /> : <Moon size={16} color={colors.ink} />}
+        <Text style={{ color: colors.ink, fontSize: 13, fontWeight: "600" }}>
+          {tema === "oscuro" ? "Modo claro" : "Modo oscuro"}
+        </Text>
+      </Pressable>
+
       <Pressable onPress={cerrarSesion} style={[styles.botonSalir, { borderColor: colors.border }]}>
         <LogOut size={16} color={colors.ink} />
         <Text style={{ color: colors.ink, fontSize: 13, fontWeight: "600" }}>Cerrar sesión</Text>
@@ -152,7 +247,12 @@ const styles = StyleSheet.create({
   tabsScroll: { marginBottom: 4 },
   avisoVerificacion: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 12 },
   tabChip: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
-  botonSalir: {
+  tarjetaRepost: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 16 },
+  filaRepost: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 8, padding: 8 },
+  fotoRepost: { width: 44, height: 44, borderRadius: 6 },
+  botonPermitir: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, alignItems: "center" },
+  botonNoPermitir: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, alignItems: "center", borderWidth: 1 },
+  botonTema: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -161,5 +261,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     marginTop: 4,
+  },
+  botonSalir: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 10,
   },
 });

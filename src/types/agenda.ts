@@ -15,6 +15,8 @@ export interface AgregarBloqueRequest {
 
 export interface OrdenAgenda {
   id: string;
+  // "Trabajo" o "Visita" (30/09) — ver el comentario equivalente en fixit-web/types/agenda.ts.
+  tipo: "Trabajo" | "Visita";
   categoriaNombre: string;
   clienteNombreCompleto: string;
   clienteDireccion: string | null;

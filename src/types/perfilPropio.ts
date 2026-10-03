@@ -16,6 +16,8 @@ export interface PerfilPropio {
   radioAlcanceKm: number | null;
   cbuOAlias: string | null;
   titularCuentaCobro: string | null;
+  // 0 = Domingo ... 6 = Sábado.
+  diaPreferidoDeCobro: number | null;
 }
 
 export interface ActualizarPerfilRequest {
@@ -31,4 +33,5 @@ export interface ActualizarPerfilRequest {
 export interface ActualizarDatosCobroRequest {
   cbuOAlias: string;
   titularCuentaCobro: string;
+  diaPreferidoDeCobro?: number | null;
 }

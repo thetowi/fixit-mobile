@@ -20,6 +20,13 @@ interface TrabajoEnCursoContextValue {
   finalizando: boolean;
   errorFinalizar: string | null;
   finalizarTrabajo: () => Promise<void>;
+  // Pausar trabajo en curso (03/10, a pedido del usuario: "poder pausar un trabajo en curso para
+  // continuar al otro día") — solo el Prestador decide (ver TrabajoEnCursoOverlay.tsx).
+  pausando: boolean;
+  reanudando: boolean;
+  errorPausa: string | null;
+  pausarTrabajo: (nota?: string) => Promise<void>;
+  reanudarTrabajo: () => Promise<void>;
 }
 
 const TrabajoEnCursoContext = createContext<TrabajoEnCursoContextValue | null>(null);
@@ -36,6 +43,9 @@ export function TrabajoEnCursoProvider({ children }: { children: ReactNode }) {
   const [minimizado, setMinimizado] = useState(false);
   const [finalizando, setFinalizando] = useState(false);
   const [errorFinalizar, setErrorFinalizar] = useState<string | null>(null);
+  const [pausando, setPausando] = useState(false);
+  const [reanudando, setReanudando] = useState(false);
+  const [errorPausa, setErrorPausa] = useState<string | null>(null);
 
   const ordenIdAnteriorRef = useRef<string | null>(null);
 
@@ -74,6 +84,42 @@ export function TrabajoEnCursoProvider({ children }: { children: ReactNode }) {
     ordenIdAnteriorRef.current = idActual;
   }, [ordenEnCurso?.ordenId]);
 
+  const pausarTrabajo = useCallback(
+    async (nota?: string) => {
+      if (!ordenEnCurso) return;
+      setPausando(true);
+      setErrorPausa(null);
+      try {
+        await apiFetch(`/api/ordenes/${ordenEnCurso.ordenId}/pausar`, {
+          method: "PUT",
+          body: JSON.stringify({ nota: nota?.trim() || undefined }),
+        });
+        setOrdenEnCurso((prev) =>
+          prev ? { ...prev, pausadoEn: new Date().toISOString(), notaPausa: nota?.trim() || null } : prev
+        );
+      } catch (err) {
+        setErrorPausa(err instanceof ApiError ? err.message : "No pudimos pausar el trabajo.");
+      } finally {
+        setPausando(false);
+      }
+    },
+    [ordenEnCurso]
+  );
+
+  const reanudarTrabajo = useCallback(async () => {
+    if (!ordenEnCurso) return;
+    setReanudando(true);
+    setErrorPausa(null);
+    try {
+      await apiFetch(`/api/ordenes/${ordenEnCurso.ordenId}/reanudar`, { method: "PUT" });
+      setOrdenEnCurso((prev) => (prev ? { ...prev, pausadoEn: null, notaPausa: null } : prev));
+    } catch (err) {
+      setErrorPausa(err instanceof ApiError ? err.message : "No pudimos reanudar el trabajo.");
+    } finally {
+      setReanudando(false);
+    }
+  }, [ordenEnCurso]);
+
   const finalizarTrabajo = useCallback(async () => {
     if (!ordenEnCurso) return;
     setFinalizando(true);
@@ -98,6 +144,11 @@ export function TrabajoEnCursoProvider({ children }: { children: ReactNode }) {
         finalizando,
         errorFinalizar,
         finalizarTrabajo,
+        pausando,
+        reanudando,
+        errorPausa,
+        pausarTrabajo,
+        reanudarTrabajo,
       }}
     >
       {children}

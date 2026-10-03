@@ -77,8 +77,13 @@ export default function AgendaScreen() {
   const [turnoAConfirmarReprogramacion, setTurnoAConfirmarReprogramacion] = useState<OrdenAgenda | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+  // Aviso no bloqueante (30/09): a diferencia de `error`, esto NO impidió que el turno se agende —
+  // solo informa que quedó fuera del horario laboral declarado (ver AgendaService.ProgramarTurnoAsync).
+  const [avisoHorario, setAvisoHorario] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [cargandoRango, setCargandoRango] = useState(false);
+  // Cancelar una Visita a domicilio ya agendada (30/09) — ver VisitaService.CancelarAsync.
+  const [cancelandoVisitaId, setCancelandoVisitaId] = useState<string | null>(null);
 
   const inicioSemana = (() => {
     const base = new Date();
@@ -160,6 +165,19 @@ export default function AgendaScreen() {
     await cargarRango();
   }
 
+  async function handleCancelarVisita(orden: OrdenAgenda) {
+    setCancelandoVisitaId(orden.id);
+    setError(null);
+    try {
+      await apiFetch(`/api/visitas/${orden.id}/cancelar`, { method: "PUT" });
+      await refrescarTodo();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo cancelar la visita");
+    } finally {
+      setCancelandoVisitaId(null);
+    }
+  }
+
   function abrirProgramar(orden: OrdenAgenda, fechaPre?: Date, horaPre?: string) {
     setEsReprogramacion(false);
     setOrdenAProgramar(orden);
@@ -233,11 +251,15 @@ export default function AgendaScreen() {
     setProgramando(true);
     setError(null);
     try {
-      await apiFetch(`/api/ordenes/${ordenAProgramar.id}/programar`, {
-        method: "PUT",
-        body: JSON.stringify({ fechaHora: fechaHora.toISOString(), duracionMinutos: duracionTurno }),
-      });
+      const resultado = await apiFetch<{ advertenciaFueraDeHorario?: string | null }>(
+        `/api/ordenes/${ordenAProgramar.id}/programar`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ fechaHora: fechaHora.toISOString(), duracionMinutos: duracionTurno }),
+        }
+      );
       setOrdenAProgramar(null);
+      setAvisoHorario(resultado?.advertenciaFueraDeHorario ?? null);
       await refrescarTodo();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al programar el turno");
@@ -288,6 +310,15 @@ export default function AgendaScreen() {
       </View>
 
       {error && <Text style={styles.error}>{error}</Text>}
+
+      {avisoHorario && (
+        <View style={[styles.avisoSinHorarios, { backgroundColor: "#FEF3C7", borderColor: "#D97706", flexDirection: "row", alignItems: "center" }]}>
+          <Text style={{ color: "#92400E", fontSize: 12, flex: 1 }}>{avisoHorario}</Text>
+          <Pressable onPress={() => setAvisoHorario(null)}>
+            <Text style={{ color: "#92400E", fontSize: 11, fontWeight: "600", marginLeft: 8 }}>Cerrar</Text>
+          </Pressable>
+        </View>
+      )}
 
       {bloques.length === 0 && (
         <View style={[styles.avisoSinHorarios, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -359,6 +390,8 @@ export default function AgendaScreen() {
             ordenes={programadas}
             onCeldaDisponibleClick={handleCeldaDisponibleClick}
             onReprogramar={pedirConfirmacionReprogramar}
+            onCancelarVisita={handleCancelarVisita}
+            cancelandoVisitaId={cancelandoVisitaId}
           />
         ) : (
           <CalendarioMensual
@@ -366,6 +399,8 @@ export default function AgendaScreen() {
             ordenes={programadas}
             onSeleccionarDia={handleSeleccionarDiaMes}
             onReprogramar={pedirConfirmacionReprogramar}
+            onCancelarVisita={handleCancelarVisita}
+            cancelandoVisitaId={cancelandoVisitaId}
           />
         )}
       </View>

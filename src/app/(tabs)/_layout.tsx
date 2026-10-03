@@ -90,6 +90,13 @@ function BotonMensajes({
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={{ flex: 1, alignItems: "center" }}>
       <View style={{ height: 28 }} />
+      {/* Bordecito naranja "mal recortado" (03/10, reportado por el usuario con captura): pasaba
+          porque ESTA MISMA vista tenía a la vez sombra (shadow / elevation), transform: scale Y
+          borderRadius+borderWidth — en iOS esa combinación deja un filo de antialiasing sucio
+          en el borde circular al escalar. La solución es separar en dos vistas: esta de afuera
+          solo se encarga de la sombra y el scale (sin overflow hidden, para no cortarle la
+          sombra); la de adentro (ver más abajo) es la que tiene el fondo/borde/radio y SÍ recorta
+          con overflow: "hidden", así el círculo queda con un borde limpio sin importar la escala. */}
       <Animated.View
         style={{
           position: "absolute",
@@ -97,11 +104,6 @@ function BotonMensajes({
           width: 54,
           height: 54,
           borderRadius: 27,
-          backgroundColor: fondo,
-          alignItems: "center",
-          justifyContent: "center",
-          borderWidth: anchoBorde,
-          borderColor: colors.paper,
           shadowColor: "#000",
           shadowOpacity: sombraOpacidad,
           shadowRadius: sombraRadio,
@@ -110,10 +112,26 @@ function BotonMensajes({
           transform: [{ scale: escala }],
         }}
       >
-        <Animated.View style={{ transform: [{ rotate: rotacion }] }}>
-          <MessageCircle color="#FFFFFF" size={23} strokeWidth={2.3} />
+        <Animated.View
+          style={{
+            flex: 1,
+            borderRadius: 27,
+            backgroundColor: fondo,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: anchoBorde,
+            borderColor: colors.paper,
+            overflow: "hidden",
+          }}
+        >
+          <Animated.View style={{ transform: [{ rotate: rotacion }] }}>
+            <MessageCircle color="#FFFFFF" size={23} strokeWidth={2.3} />
+          </Animated.View>
         </Animated.View>
 
+        {/* El badge de no leídos queda afuera del círculo con overflow hidden a propósito — se
+            dibuja corrido (top:-4, right:-6) para sobresalir del borde, y si estuviera adentro
+            de la vista que recorta, se vería cortado por la mitad. */}
         {noLeidos > 0 && (
           <View
             style={{

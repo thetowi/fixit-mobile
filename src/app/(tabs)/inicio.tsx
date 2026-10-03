@@ -10,6 +10,8 @@ import { OrdenAgenda } from "@/types/agenda";
 import { Orden } from "@/types/ordenes";
 import { colorCategoria } from "@/lib/coloresCategoria";
 import { useRefrescoEnFoco } from "@/lib/useRefrescoEnFoco";
+import { useConteoNotificaciones } from "@/lib/notificacionesContext";
+import ObjetivoIngresoCard from "@/components/ObjetivoIngresoCard";
 
 // Landing de "Inicio" — desde el 21/09 existe para los DOS roles (antes solo para Prestador, ver
 // backlog), cada uno con su propio contenido:
@@ -65,6 +67,28 @@ function saludoSegunHora(): string {
 
 function capitalizar(texto: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+// Entrada al centro de notificaciones (03/10, a pedido del usuario) — campanita en la esquina del
+// header de Inicio, con el mismo badge que ya usa la pestaña "Mensajes" (ver (tabs)/_layout.tsx),
+// pero alimentado por notificacionesContext.tsx en vez de conteoNoLeidosContext.tsx.
+function BotonNotificaciones({ colors, top }: { colors: ReturnType<typeof useFixitColors>; top: number }) {
+  const router = useRouter();
+  const noLeidas = useConteoNotificaciones();
+  return (
+    <Pressable
+      onPress={() => router.push("/notificaciones")}
+      hitSlop={10}
+      style={[styles.botonNotificaciones, { top }]}
+    >
+      <Bell color={colors.onNav} size={22} strokeWidth={2} />
+      {noLeidas > 0 && (
+        <View style={[styles.badgeNotificaciones, { borderColor: colors.nav }]}>
+          <Text style={styles.badgeNotificacionesTexto}>{noLeidas > 9 ? "9+" : noLeidas}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
 }
 
 export default function InicioScreen() {
@@ -154,12 +178,26 @@ function InicioPrestador() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.paper }}
       contentContainerStyle={{ paddingBottom: 32 }}
-      refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => cargar(true)} tintColor={colors.copper} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refrescando}
+          onRefresh={() => cargar(true)}
+          tintColor={colors.copper}
+          // progressViewOffset (03/10, reportado por el usuario con captura): sin esto, el spinner
+          // nativo de "pull to refresh" se dibuja pegado al borde de arriba de la ScrollView —
+          // como esta pantalla no tiene header nativo (headerShown: false) y el encabezado oscuro
+          // es contenido JS dentro del scroll, ese spinner quedaba tapado por el notch/isla
+          // dinámica en vez de aparecer debajo. Lo empuja para abajo la misma cantidad que ya usa
+          // el encabezado (insets.top).
+          progressViewOffset={insets.top}
+        />
+      }
     >
       <View style={[styles.encabezado, { backgroundColor: colors.nav, paddingTop: insets.top + 12 }]}>
         <Text style={[styles.saludoHorario, { color: colors.onNav, opacity: 0.62 }]}>{saludoSegunHora()}</Text>
         <Text style={[styles.saludoNombre, { color: colors.onNav }]}>¡Hola, {usuario?.nombre}!</Text>
         <Text style={[styles.fechaHoy, { color: colors.onNav, opacity: 0.5 }]}>{fechaHoyTexto}</Text>
+        <BotonNotificaciones colors={colors} top={insets.top + 14} />
       </View>
 
       {error ? (
@@ -201,6 +239,9 @@ function InicioPrestador() {
               </Text>
             </View>
           </View>
+
+          {/* "Sueldo pretendido" (29/09) — ver claude/aviso-pago-y-sueldo-pretendido-28-09.md */}
+          <ObjetivoIngresoCard />
 
           {sinNadaEstaSemana ? (
             <View style={[styles.tarjetaVacia, { backgroundColor: colors.surface }]}>
@@ -388,12 +429,26 @@ function InicioCliente() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.paper }}
       contentContainerStyle={{ paddingBottom: 32 }}
-      refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => cargar(true)} tintColor={colors.copper} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refrescando}
+          onRefresh={() => cargar(true)}
+          tintColor={colors.copper}
+          // progressViewOffset (03/10, reportado por el usuario con captura): sin esto, el spinner
+          // nativo de "pull to refresh" se dibuja pegado al borde de arriba de la ScrollView —
+          // como esta pantalla no tiene header nativo (headerShown: false) y el encabezado oscuro
+          // es contenido JS dentro del scroll, ese spinner quedaba tapado por el notch/isla
+          // dinámica en vez de aparecer debajo. Lo empuja para abajo la misma cantidad que ya usa
+          // el encabezado (insets.top).
+          progressViewOffset={insets.top}
+        />
+      }
     >
       <View style={[styles.encabezado, { backgroundColor: colors.nav, paddingTop: insets.top + 12 }]}>
         <Text style={[styles.saludoHorario, { color: colors.onNav, opacity: 0.62 }]}>{saludoSegunHora()}</Text>
         <Text style={[styles.saludoNombre, { color: colors.onNav }]}>¡Hola, {usuario?.nombre}!</Text>
         <Text style={[styles.fechaHoy, { color: colors.onNav, opacity: 0.5 }]}>{fechaHoyTexto}</Text>
+        <BotonNotificaciones colors={colors} top={insets.top + 14} />
       </View>
 
       {error ? (
@@ -462,7 +517,11 @@ function InicioCliente() {
                       {o.categoriaNombre} · último trabajo {tiempoDesde(o.creadoEn)}
                     </Text>
                   </View>
-                  <View style={[styles.botonRecontratar, { backgroundColor: colors.ink }]}>
+                  {/* colors.nav en vez de colors.ink (03/10) — colors.ink se invierte en modo
+                      oscuro del sistema (se vuelve claro) y el texto blanco quedaba casi invisible
+                      sobre un fondo claro. colors.nav es el mismo token fijo que ya usan el header
+                      de "Inicio" más arriba y los perfiles de prestador/cliente: siempre oscuro. */}
+                  <View style={[styles.botonRecontratar, { backgroundColor: colors.nav }]}>
                     <Text style={styles.botonRecontratarTexto}>Recontratar</Text>
                   </View>
                 </Pressable>
@@ -477,7 +536,22 @@ function InicioCliente() {
 
 const styles = StyleSheet.create({
   centrado: { flex: 1, alignItems: "center", justifyContent: "center" },
-  encabezado: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, gap: 4 },
+  encabezado: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, gap: 4, position: "relative" },
+  botonNotificaciones: { position: "absolute", right: 20, width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  badgeNotificaciones: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 3,
+    backgroundColor: "#E5484D",
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeNotificacionesTexto: { color: "#FFFFFF", fontSize: 9.5, fontWeight: "700" },
   saludoHorario: { fontSize: 14, fontWeight: "500" },
   saludoNombre: { fontSize: 24, fontWeight: "800", lineHeight: 30 },
   fechaHoy: { fontSize: 13, fontWeight: "500", marginTop: 2 },

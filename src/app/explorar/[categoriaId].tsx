@@ -60,7 +60,11 @@ export default function ExplorarCategoriaScreen() {
 
               <View style={styles.info}>
                 <View style={styles.nombreFila}>
-                  <Text style={[styles.nombre, { color: colors.ink }]} numberOfLines={1}>
+                  {/* flex:1 en el nombre (03/10, a pedido del usuario: "se esconde o se pisa
+                      cuando el nombre es muy largo") — sin esto el Text no se achicaba para
+                      dejarle lugar a la insignia de tamaño fijo, que quedaba tapada por el
+                      propio truncado del nombre en vez de visible siempre al lado. */}
+                  <Text style={[styles.nombre, { color: colors.ink, flex: 1 }]} numberOfLines={1}>
                     {p.nombre} {p.apellido}
                   </Text>
                   {p.verificado && <InsigniaVerificado size={14} />}

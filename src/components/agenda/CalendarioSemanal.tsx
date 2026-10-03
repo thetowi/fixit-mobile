@@ -39,14 +39,21 @@ export default function CalendarioSemanal({
   ordenes,
   onCeldaDisponibleClick,
   onReprogramar,
+  onCancelarVisita,
+  cancelandoVisitaId,
 }: {
   inicioSemana: Date;
   bloques: BloqueDisponibilidad[];
   ordenes: OrdenAgenda[];
   onCeldaDisponibleClick?: (dia: Date, horaHHMM: string) => void;
   // Reprogramar un turno ya agendado (22/09, a pedido del usuario) — el padre pide confirmación
-  // antes de abrir el formulario de "Programar" pre-cargado. Mismo patrón que fixit-web.
+  // antes de abrir el formulario de "Programar" pre-cargado. Mismo patrón que fixit-web. Solo
+  // aplica a Tipo === "Trabajo".
   onReprogramar?: (orden: OrdenAgenda) => void;
+  // Cancelar una Visita a domicilio ya agendada (30/09) — ver el comentario equivalente en
+  // fixit-web/components/CalendarioSemanal.tsx.
+  onCancelarVisita?: (orden: OrdenAgenda) => void;
+  cancelandoVisitaId?: string | null;
 }) {
   const colors = useFixitColors();
   const hoy = new Date();
@@ -160,19 +167,45 @@ export default function CalendarioSemanal({
       ) : (
         <View style={{ gap: 8, marginBottom: 18 }}>
           {turnosDia.map((orden, i) => {
-            const color = colorCategoria(orden.categoriaNombre);
+            const esVisita = orden.tipo === "Visita";
+            // Ver el mismo criterio en fixit-web/components/CalendarioSemanal.tsx (30/09).
+            const visitaCancelada = esVisita && orden.estado === "Cancelada";
+            const visitaRealizada = esVisita && orden.estado === "Realizada";
+            const color = visitaRealizada ? "#16a34a" : esVisita ? colors.copper : colorCategoria(orden.categoriaNombre);
             return (
               <Pressable
                 key={`${orden.fechaHoraProgramada}-${i}`}
                 onPress={() => setOrdenSeleccionada(orden)}
-                style={[styles.tarjetaTurno, { backgroundColor: colors.surface, borderColor: colors.border, borderLeftColor: color }]}
+                style={[
+                  styles.tarjetaTurno,
+                  { backgroundColor: colors.surface, borderColor: colors.border, borderLeftColor: color },
+                  visitaCancelada ? { opacity: 0.6 } : null,
+                ]}
               >
                 <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
                   {new Date(orden.fechaHoraProgramada!).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                  {orden.duracionMinutos ? ` · ${formatoDuracion(orden.duracionMinutos)}` : ""} · {orden.categoriaNombre}
+                  {orden.duracionMinutos ? ` · ${formatoDuracion(orden.duracionMinutos)}` : ""} ·{" "}
+                  {visitaCancelada ? "Visita cancelada" : visitaRealizada ? "✓ Visita realizada" : esVisita ? "📍 Visita" : orden.categoriaNombre}
                 </Text>
-                <Text style={{ color: colors.ink, fontWeight: "600", marginTop: 2 }}>{orden.clienteNombreCompleto}</Text>
-                <Text style={{ color: colors.inkMuted, fontSize: 13 }}>{orden.descripcion || orden.categoriaNombre}</Text>
+                <Text
+                  style={{
+                    color: colors.ink,
+                    fontWeight: "600",
+                    marginTop: 2,
+                    textDecorationLine: visitaCancelada ? "line-through" : "none",
+                  }}
+                >
+                  {orden.clienteNombreCompleto}
+                </Text>
+                <Text
+                  style={{
+                    color: colors.inkMuted,
+                    fontSize: 13,
+                    textDecorationLine: visitaCancelada ? "line-through" : "none",
+                  }}
+                >
+                  {orden.descripcion || orden.categoriaNombre}
+                </Text>
               </Pressable>
             );
           })}
@@ -237,7 +270,7 @@ export default function CalendarioSemanal({
                 <DetalleCampo label="Teléfono" valor={ordenSeleccionada.clienteTelefono || "Sin teléfono cargado"} colors={colors} />
                 {ordenSeleccionada.fechaHoraProgramada && (
                   <DetalleCampo
-                    label="Turno"
+                    label={ordenSeleccionada.tipo === "Visita" ? "Visita" : "Turno"}
                     valor={`${new Date(ordenSeleccionada.fechaHoraProgramada).toLocaleString("es-AR", {
                       weekday: "long",
                       day: "numeric",
@@ -248,7 +281,14 @@ export default function CalendarioSemanal({
                     colors={colors}
                   />
                 )}
-                {onReprogramar && (
+                {ordenSeleccionada.tipo === "Visita" && ordenSeleccionada.estado !== "Programada" && (
+                  <DetalleCampo
+                    label="Estado"
+                    valor={ordenSeleccionada.estado === "Realizada" ? "✓ Realizada" : "Cancelada"}
+                    colors={colors}
+                  />
+                )}
+                {onReprogramar && ordenSeleccionada.tipo !== "Visita" && (
                   <Pressable
                     onPress={() => {
                       const orden = ordenSeleccionada;
@@ -258,6 +298,21 @@ export default function CalendarioSemanal({
                     style={{ marginTop: 10, alignItems: "center" }}
                   >
                     <Text style={{ color: colors.copper, fontSize: 13, fontWeight: "600" }}>Reprogramar este turno</Text>
+                  </Pressable>
+                )}
+                {onCancelarVisita && ordenSeleccionada.tipo === "Visita" && ordenSeleccionada.estado === "Programada" && (
+                  <Pressable
+                    onPress={() => {
+                      const orden = ordenSeleccionada;
+                      setOrdenSeleccionada(null);
+                      onCancelarVisita(orden);
+                    }}
+                    disabled={cancelandoVisitaId === ordenSeleccionada.id}
+                    style={{ marginTop: 10, alignItems: "center" }}
+                  >
+                    <Text style={{ color: colors.inkMuted, fontSize: 13, fontWeight: "600" }}>
+                      {cancelandoVisitaId === ordenSeleccionada.id ? "Cancelando..." : "Cancelar visita"}
+                    </Text>
                   </Pressable>
                 )}
                 <Pressable onPress={() => setOrdenSeleccionada(null)} style={{ marginTop: 8, alignSelf: "flex-end" }}>

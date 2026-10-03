@@ -3,23 +3,34 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { apiFetch, ApiError } from "@/lib/api";
 import { useFixitColors } from "@/hooks/use-fixit-colors";
 import { ActualizarDatosCobroRequest, PerfilPropio } from "@/types/perfilPropio";
+import SelectorModal, { BotonSelector } from "@/components/SelectorModal";
 
 type Props = {
   perfil: PerfilPropio;
   onPerfilActualizado: (perfil: PerfilPropio) => void;
 };
 
+// 0 = Domingo ... 6 = Sábado, mismo orden que usa el backend (DayOfWeek de .NET).
+const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
 // Reemplaza la vieja conexión OAuth de Mercado Pago (split payments) por la carga manual de
 // CBU/alias: con el modelo de retención, el dinero del cliente queda en la cuenta de Mercado
 // Pago de FixIt, y cuando el cliente marca el trabajo como completado un Admin le transfiere
-// manualmente al prestador su parte por transferencia bancaria a este CBU/alias.
+// manualmente al prestador su parte por transferencia bancaria a este CBU/alias (que puede ser
+// tranquilamente un alias de Mercado Pago, funciona igual que uno bancario).
 export default function CobrosSeccion({ perfil, onPerfilActualizado }: Props) {
   const colors = useFixitColors();
   const [cbuOAlias, setCbuOAlias] = useState(perfil.cbuOAlias ?? "");
   const [titular, setTitular] = useState(perfil.titularCuentaCobro ?? "");
+  // 29/09: día de la semana en el que el prestador prefiere recibir la transferencia — solo
+  // informativo para que Oficy organice cuándo transferirle, no cambia cuándo se libera el pago.
+  const [diaPreferido, setDiaPreferido] = useState<number | null>(perfil.diaPreferidoDeCobro ?? null);
+  const [modalDiaAbierto, setModalDiaAbierto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);
+
+  const etiquetaDia = diaPreferido === null ? "Sin preferencia" : DIAS[diaPreferido];
 
   async function handleGuardar() {
     setError(null);
@@ -32,7 +43,11 @@ export default function CobrosSeccion({ perfil, onPerfilActualizado }: Props) {
 
     setGuardando(true);
     try {
-      const cuerpo: ActualizarDatosCobroRequest = { cbuOAlias: cbuOAlias.trim(), titularCuentaCobro: titular.trim() };
+      const cuerpo: ActualizarDatosCobroRequest = {
+        cbuOAlias: cbuOAlias.trim(),
+        titularCuentaCobro: titular.trim(),
+        diaPreferidoDeCobro: diaPreferido,
+      };
       const data = await apiFetch<PerfilPropio>("/api/usuarios/datos-cobro", {
         method: "PUT",
         body: JSON.stringify(cuerpo),
@@ -77,6 +92,24 @@ export default function CobrosSeccion({ perfil, onPerfilActualizado }: Props) {
             style={[styles.input, { borderColor: colors.border, color: colors.ink }]}
           />
         </View>
+
+        <View>
+          <Text style={[styles.label, { color: colors.inkMuted }]}>Día preferido para cobrar</Text>
+          <BotonSelector label={etiquetaDia} onPress={() => setModalDiaAbierto(true)} />
+          <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 4 }}>
+            Es solo una referencia para que Oficy organice las transferencias — no cambia cuándo se
+            libera tu pago.
+          </Text>
+        </View>
+
+        <SelectorModal
+          visible={modalDiaAbierto}
+          opciones={[{ value: "sin-preferencia", label: "Sin preferencia" }, ...DIAS.map((d, i) => ({ value: String(i), label: d }))]}
+          valorActual={diaPreferido === null ? "sin-preferencia" : String(diaPreferido)}
+          onSeleccionar={(v) => setDiaPreferido(v === "sin-preferencia" ? null : Number(v))}
+          onCerrar={() => setModalDiaAbierto(false)}
+          titulo="Día preferido para cobrar"
+        />
 
         <Pressable
           onPress={handleGuardar}

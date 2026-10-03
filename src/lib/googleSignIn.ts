@@ -9,11 +9,19 @@ import { GoogleSignin, isSuccessResponse, isErrorWithCode, statusCodes } from "@
 // ningún cambio para aceptarlo.
 const WEB_CLIENT_ID = "255386234536-n11ndtorgbr3t3f6aqad17u7q6pnl8hc.apps.googleusercontent.com";
 
+// Client ID de tipo "iOS" (01/10, agregado al arrancar iOS) — este SÍ hace falta pasarlo en
+// iOS (a diferencia del de Android, que no se referencia acá): es lo que le permite al SDK
+// nativo de Google en iOS abrir el flujo de login y volver a la app por el URL scheme
+// registrado en app.json (plugin "@react-native-google-signin/google-signin", "iosUrlScheme").
+// Creado en Google Cloud Console con el Bundle ID "ar.oficy.fixitmobile". En Android este campo
+// se ignora sin problema, así que no hace falta un if de plataforma.
+const IOS_CLIENT_ID = "255386234536-r49pq3ebacifsjopl7kcas366g6k82va.apps.googleusercontent.com";
+
 let configurado = false;
 
 function asegurarConfigurado() {
   if (configurado) return;
-  GoogleSignin.configure({ webClientId: WEB_CLIENT_ID, offlineAccess: false });
+  GoogleSignin.configure({ webClientId: WEB_CLIENT_ID, iosClientId: IOS_CLIENT_ID, offlineAccess: false });
   configurado = true;
 }
 

@@ -20,12 +20,17 @@ import { useAuth } from "@/lib/authContext";
 // (tabs)/inicio.tsx), los DOS roles aterrizan ahí al iniciar sesión — antes el Cliente entraba
 // directo a "Explorar". Por el mismo motivo del bug de arriba, hay que apuntar al href completo
 // ("/(tabs)/inicio") para los dos roles, no alcanza con cambiar initialRouteName en el layout.
+//
+// 29/09: sin sesión ya no manda directo a /login — primero pasa por /bienvenida (pantalla previa
+// al login, a pedido del usuario: "si abrís la app te manda directo al login... no te informa
+// nada, no dice nada"). Esa pantalla tiene sus propios botones que llevan a /login cuando
+// corresponde. Ver bienvenida.tsx y el grupo público en _layout.tsx.
 export default function Index() {
   const { usuario, cargando } = useAuth();
 
   if (cargando) return null;
 
-  if (!usuario) return <Redirect href="/login" />;
+  if (!usuario) return <Redirect href="/bienvenida" />;
 
   return <Redirect href="/(tabs)/inicio" />;
 }

@@ -13,6 +13,23 @@ export interface ArchivoParaSubir {
   type: string;
 }
 
+// Convierte el archivo local (uri de expo-image-picker/expo-audio, tipo "file://...") en un Blob
+// real. Hasta hace poco, React Native aceptaba mandar directamente `{ uri, name, type }` como
+// "parte" de un FormData sin ser un Blob de verdad — una convención propia de RN que su `fetch`
+// nativo reconocía como caso especial. En la versión de RN que trae este SDK de Expo (57), esa
+// convención vieja ya no funciona: tira "Unsupported FormData part implementation" (30/09,
+// reportado por el usuario, rompía tanto fotos como audios porque ambos pasan por esta misma
+// función). El arreglo es pedirle a `fetch` que lea el archivo local y nos dé un Blob real, y
+// mandar ESE Blob — soporta cualquier archivo local, y es la forma que sigue funcionando tanto en
+// RN nuevo como en la web.
+async function archivoABlob(archivo: ArchivoParaSubir): Promise<Blob> {
+  const respuestaLocal = await fetch(archivo.uri);
+  const blobCrudo = await respuestaLocal.blob();
+  // Forzamos el Content-Type que ya sabíamos que correspondía (ej. "audio/mp4" para la nota de
+  // voz) — el que trae el Blob leído del archivo puede venir vacío o distinto según la plataforma.
+  return new Blob([blobCrudo], { type: archivo.type });
+}
+
 export async function apiUpload<T>(
   path: string,
   campos: Record<string, ArchivoParaSubir | string>,
@@ -25,9 +42,8 @@ export async function apiUpload<T>(
     if (typeof valor === "string") {
       formData.append(clave, valor);
     } else {
-      // React Native entiende este shape especial de FormData.append para archivos (no es un
-      // Blob real como en el navegador, es una convención que soporta `fetch` de RN).
-      formData.append(clave, { uri: valor.uri, name: valor.name, type: valor.type } as unknown as Blob);
+      const blob = await archivoABlob(valor);
+      formData.append(clave, blob, valor.name);
     }
   }
 

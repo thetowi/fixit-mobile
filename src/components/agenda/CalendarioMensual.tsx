@@ -29,13 +29,20 @@ export default function CalendarioMensual({
   ordenes,
   onSeleccionarDia,
   onReprogramar,
+  onCancelarVisita,
+  cancelandoVisitaId,
 }: {
   mesBase: Date;
   ordenes: OrdenAgenda[];
   onSeleccionarDia?: (dia: Date) => void;
   // Reprogramar un turno ya agendado (22/09, a pedido del usuario) — mismo callback que
-  // CalendarioSemanal, el padre pide confirmación antes de abrir el formulario.
+  // CalendarioSemanal, el padre pide confirmación antes de abrir el formulario. Solo aplica a
+  // Tipo === "Trabajo".
   onReprogramar?: (orden: OrdenAgenda) => void;
+  // Cancelar una Visita a domicilio ya agendada (30/09) — ver el comentario equivalente en
+  // CalendarioSemanal.
+  onCancelarVisita?: (orden: OrdenAgenda) => void;
+  cancelandoVisitaId?: string | null;
 }) {
   const colors = useFixitColors();
   const hoy = new Date();
@@ -100,7 +107,23 @@ export default function CalendarioMensual({
               </View>
               <View style={styles.filaPuntos}>
                 {celda.turnos.slice(0, MAX_PUNTOS_POR_DIA).map((t) => (
-                  <View key={t.id} style={[styles.punto, { backgroundColor: colorCategoria(t.categoriaNombre) }]} />
+                  <View
+                    key={t.id}
+                    style={[
+                      styles.punto,
+                      {
+                        backgroundColor:
+                          t.tipo === "Visita"
+                            ? t.estado === "Cancelada"
+                              ? colors.inkMuted
+                              : t.estado === "Realizada"
+                                ? "#16a34a"
+                                : colors.copper
+                            : colorCategoria(t.categoriaNombre),
+                        opacity: t.tipo === "Visita" && t.estado === "Cancelada" ? 0.4 : 1,
+                      },
+                    ]}
+                  />
                 ))}
               </View>
             </Pressable>
@@ -124,15 +147,43 @@ export default function CalendarioMensual({
                 </Text>
                 <ScrollView style={{ gap: 10 }}>
                   {turnosDelDiaDetalle.map((orden) => {
-                    const color = colorCategoria(orden.categoriaNombre);
+                    const esVisita = orden.tipo === "Visita";
+                    // Ver el mismo criterio en fixit-web/components/CalendarioMensual.tsx (30/09).
+                    const visitaCancelada = esVisita && orden.estado === "Cancelada";
+                    const visitaRealizada = esVisita && orden.estado === "Realizada";
+                    const color = visitaRealizada ? "#16a34a" : esVisita ? colors.copper : colorCategoria(orden.categoriaNombre);
                     return (
-                      <View key={orden.id} style={[styles.tarjetaTurno, { backgroundColor: colors.paper, borderLeftColor: color, marginBottom: 8 }]}>
+                      <View
+                        key={orden.id}
+                        style={[
+                          styles.tarjetaTurno,
+                          { backgroundColor: colors.paper, borderLeftColor: color, marginBottom: 8 },
+                          visitaCancelada ? { opacity: 0.6 } : null,
+                        ]}
+                      >
                         <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
                           {new Date(orden.fechaHoraProgramada!).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                          {orden.duracionMinutos ? ` · ${formatoDuracion(orden.duracionMinutos)}` : ""} · {orden.categoriaNombre}
+                          {orden.duracionMinutos ? ` · ${formatoDuracion(orden.duracionMinutos)}` : ""} ·{" "}
+                          {visitaCancelada ? "Visita cancelada" : visitaRealizada ? "✓ Visita realizada" : esVisita ? "📍 Visita" : orden.categoriaNombre}
                         </Text>
-                        <Text style={{ color: colors.ink, fontWeight: "600" }}>{orden.clienteNombreCompleto}</Text>
-                        <Text style={{ color: colors.inkMuted, fontSize: 13 }}>{orden.descripcion || orden.categoriaNombre}</Text>
+                        <Text
+                          style={{
+                            color: colors.ink,
+                            fontWeight: "600",
+                            textDecorationLine: visitaCancelada ? "line-through" : "none",
+                          }}
+                        >
+                          {orden.clienteNombreCompleto}
+                        </Text>
+                        <Text
+                          style={{
+                            color: colors.inkMuted,
+                            fontSize: 13,
+                            textDecorationLine: visitaCancelada ? "line-through" : "none",
+                          }}
+                        >
+                          {orden.descripcion || orden.categoriaNombre}
+                        </Text>
                         {orden.clienteDireccion && (
                           <Pressable
                             onPress={() => Linking.openURL(linkGoogleMaps(orden.clienteDireccion, orden.clienteDireccionLat, orden.clienteDireccionLon))}
@@ -147,7 +198,7 @@ export default function CalendarioMensual({
                           <Text style={{ color: colors.inkMuted, fontSize: 11 }}>{formatoDistancia(orden.clienteDistanciaKm)}</Text>
                         )}
                         {orden.clienteTelefono && <Text style={{ color: colors.inkMuted, fontSize: 11 }}>{orden.clienteTelefono}</Text>}
-                        {onReprogramar && (
+                        {onReprogramar && !esVisita && (
                           <Pressable
                             onPress={() => {
                               setDiaDetalle(null);
@@ -156,6 +207,20 @@ export default function CalendarioMensual({
                             style={{ marginTop: 6 }}
                           >
                             <Text style={{ color: colors.copper, fontSize: 12, fontWeight: "600" }}>Reprogramar</Text>
+                          </Pressable>
+                        )}
+                        {onCancelarVisita && esVisita && orden.estado === "Programada" && (
+                          <Pressable
+                            onPress={() => {
+                              setDiaDetalle(null);
+                              onCancelarVisita(orden);
+                            }}
+                            disabled={cancelandoVisitaId === orden.id}
+                            style={{ marginTop: 6 }}
+                          >
+                            <Text style={{ color: colors.inkMuted, fontSize: 12, fontWeight: "600" }}>
+                              {cancelandoVisitaId === orden.id ? "Cancelando..." : "Cancelar visita"}
+                            </Text>
                           </Pressable>
                         )}
                       </View>

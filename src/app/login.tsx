@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -33,11 +34,21 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Navegación por teclado (30/09, a pedido del usuario): tocar "Siguiente" en el email pasa el
+  // foco a la contraseña, y tocar "Ingresar" ahí manda el formulario — sin esto había que tocar el
+  // campo de contraseña a mano y después el botón.
+  const passwordRef = useRef<TextInput>(null);
   const [cargando, setCargando] = useState(false);
   const [cargandoGoogle, setCargandoGoogle] = useState(false);
 
   const [pendienteDeRol, setPendienteDeRol] = useState<{ idToken: string; nombre: string } | null>(null);
   const [rolElegido, setRolElegido] = useState<"cliente" | "prestador">("cliente");
+  // Este paso ("elegí tu rol") es, en la práctica, el único lugar donde fixit-mobile crea una
+  // cuenta nueva (vía Google) — no hay registro por email/password en la app, solo login. Por eso
+  // el checkbox de Términos/Privacidad va acá y no en la pantalla de login de arriba. Espejo del
+  // checkbox obligatorio que ya existe en fixit-web (app/(auth)/registro/page.tsx); como
+  // fixit-mobile no tiene esas páginas propias, se abren con el navegador del sistema.
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
 
   async function handleSubmit() {
     if (!email.trim() || !password) return;
@@ -87,6 +98,10 @@ export default function LoginScreen() {
 
   async function handleCompletarRegistro() {
     if (!pendienteDeRol) return;
+    if (!aceptaTerminos) {
+      setError("Tenés que aceptar los Términos y la Política de Privacidad para crear tu cuenta.");
+      return;
+    }
     setError(null);
     setCargando(true);
     try {
@@ -131,12 +146,50 @@ export default function LoginScreen() {
             </Pressable>
           ))}
 
+          <Pressable
+            onPress={() => setAceptaTerminos((v) => !v)}
+            style={styles.checkboxFila}
+            hitSlop={8}
+          >
+            <View
+              style={[
+                styles.checkboxCaja,
+                {
+                  borderColor: aceptaTerminos ? colors.copper : colors.border,
+                  backgroundColor: aceptaTerminos ? colors.copper : "transparent",
+                },
+              ]}
+            >
+              {aceptaTerminos && <Text style={styles.checkboxTilde}>✓</Text>}
+            </View>
+            <Text style={[styles.checkboxTexto, { color: colors.inkMuted }]}>
+              Acepto los{" "}
+              <Text
+                style={{ color: colors.copper, fontWeight: "600" }}
+                onPress={() => Linking.openURL("https://oficy.ar/terminos")}
+              >
+                Términos y Condiciones
+              </Text>{" "}
+              y la{" "}
+              <Text
+                style={{ color: colors.copper, fontWeight: "600" }}
+                onPress={() => Linking.openURL("https://oficy.ar/privacidad")}
+              >
+                Política de Privacidad
+              </Text>{" "}
+              de Oficy.
+            </Text>
+          </Pressable>
+
           {error && <Text style={styles.error}>{error}</Text>}
 
           <Pressable
             onPress={handleCompletarRegistro}
-            disabled={cargando}
-            style={[styles.boton, { backgroundColor: colors.copper, opacity: cargando ? 0.6 : 1 }]}
+            disabled={cargando || !aceptaTerminos}
+            style={[
+              styles.boton,
+              { backgroundColor: colors.copper, opacity: cargando || !aceptaTerminos ? 0.5 : 1 },
+            ]}
           >
             {cargando ? <ActivityIndicator color="#FFF8F0" /> : <Text style={styles.botonTexto}>Continuar</Text>}
           </Pressable>
@@ -201,6 +254,9 @@ export default function LoginScreen() {
           autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"
+          returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+          blurOnSubmit={false}
           style={[
             styles.input,
             { borderColor: colors.border, backgroundColor: colors.surface, color: colors.ink },
@@ -209,12 +265,15 @@ export default function LoginScreen() {
 
         <Text style={[styles.label, { color: colors.ink, marginTop: 14 }]}>Contraseña</Text>
         <TextInput
+          ref={passwordRef}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
           placeholderTextColor={colors.inkMuted}
           secureTextEntry
           autoComplete="password"
+          returnKeyType="go"
+          onSubmitEditing={handleSubmit}
           style={[
             styles.input,
             { borderColor: colors.border, backgroundColor: colors.surface, color: colors.ink },
@@ -260,4 +319,16 @@ const styles = StyleSheet.create({
   separadorFila: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 18 },
   separadorLinea: { flex: 1, height: 1 },
   opcionRol: { borderWidth: 1.5, borderRadius: 12, padding: 14, marginBottom: 10 },
+  checkboxFila: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 6, marginBottom: 4 },
+  checkboxCaja: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxTilde: { color: "#FFF8F0", fontSize: 13, fontWeight: "700", lineHeight: 14 },
+  checkboxTexto: { flex: 1, fontSize: 12.5, lineHeight: 17 },
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { apiFetch, ApiError } from "@/lib/api";
 import { apiUpload, ArchivoParaSubir } from "@/lib/apiUpload";
@@ -174,6 +174,20 @@ export default function VerificacionSeccion() {
             <CampoDocumento label="Foto del DNI (frente)" archivo={dniFoto} onElegir={async () => setDniFoto(await elegirDocumento())} />
             <CampoDocumento label="Certificado de antecedentes penales" archivo={antecedentes} onElegir={async () => setAntecedentes(await elegirDocumento())} />
 
+            {/* 02/10, a pedido del usuario: ayuda para quien todavía no tiene el certificado
+                tramitado — mismo criterio que fixit-web, el link se ve corto ("argentina.gob") en
+                vez de la URL completa. */}
+            <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: -6, marginBottom: 10 }}>
+              Si no lo tenés todavía, podés tramitarlo ingresando a{" "}
+              <Text
+                style={{ color: colors.copper, fontWeight: "600" }}
+                onPress={() => Linking.openURL("https://www.argentina.gob.ar/justicia/reincidencia/antecedentespenales")}
+              >
+                argentina.gob
+              </Text>
+              .
+            </Text>
+
             <Text style={{ color: colors.inkMuted, fontSize: 10 }}>Imagen o PDF, hasta 8 MB cada uno.</Text>
 
             {error && <Text style={styles.error}>{error}</Text>}
@@ -232,7 +246,12 @@ export default function VerificacionSeccion() {
                         <Text style={{ color: "#C0392B", fontSize: 12, marginTop: 4 }}>{vc.motivoRechazo}</Text>
                       )}
                       <View style={styles.filaAccionMatricula}>
-                        <Pressable onPress={async () => setArchivosMatricula((prev) => ({ ...prev, [vc.prestadorCategoriaId]: await elegirDocumento() }))}>
+                        <Pressable
+                          onPress={async () => {
+                            const doc = await elegirDocumento();
+                            setArchivosMatricula((prev) => ({ ...prev, [vc.prestadorCategoriaId]: doc }));
+                          }}
+                        >
                           <Text style={{ color: colors.copper, fontSize: 12 }}>{archivo ? "Cambiar archivo" : "Elegir archivo"}</Text>
                         </Pressable>
                         {archivo && (

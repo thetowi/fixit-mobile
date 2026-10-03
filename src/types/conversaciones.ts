@@ -13,6 +13,9 @@ export interface Conversacion {
   ultimoMensaje: string | null;
   ultimoMensajeEn: string | null;
   mensajesNoLeidos: number;
+  // Aviso de "no pagues/cobres por fuera de la app" (29/09) — ya resuelto por el backend contra
+  // el rol de quien lo pide, ver ConversacionService en fixit-api.
+  avisoPagoVisto: boolean;
 }
 
 export interface IniciarConversacionRequest {
