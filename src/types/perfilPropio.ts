@@ -14,7 +14,9 @@ export interface PerfilPropio {
   latitud: number | null;
   longitud: number | null;
   radioAlcanceKm: number | null;
-  cbuOAlias: string | null;
+  // Separado en 2 campos el 04/10 (antes "cbuOAlias" único) — para más seguridad al transferir.
+  cbu: string | null;
+  alias: string | null;
   titularCuentaCobro: string | null;
   // 0 = Domingo ... 6 = Sábado.
   diaPreferidoDeCobro: number | null;
@@ -31,7 +33,8 @@ export interface ActualizarPerfilRequest {
 }
 
 export interface ActualizarDatosCobroRequest {
-  cbuOAlias: string;
+  cbu: string;
+  alias: string;
   titularCuentaCobro: string;
   diaPreferidoDeCobro?: number | null;
 }
