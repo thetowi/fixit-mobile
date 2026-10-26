@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LogOut, Moon, Sun } from "lucide-react-native";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -27,11 +27,15 @@ import HorariosSeccion from "@/components/cuenta/HorariosSeccion";
 import VerificacionSeccion from "@/components/cuenta/VerificacionSeccion";
 import CobrosSeccion from "@/components/cuenta/CobrosSeccion";
 import GananciasSeccion from "@/components/cuenta/GananciasSeccion";
+import MiPlanSeccion from "@/components/cuenta/MiPlanSeccion";
+import { useConfigCobros } from "@/lib/cobros";
 
-type Seccion = "perfil" | "servicios" | "acerca" | "cobertura" | "horarios" | "verificacion" | "cobros" | "ganancias";
+type Seccion = "perfil" | "plan" | "servicios" | "acerca" | "cobertura" | "horarios" | "verificacion" | "cobros" | "ganancias";
 
 const SECCIONES: { id: Seccion; label: string }[] = [
   { id: "perfil", label: "Perfil" },
+  // Nuevo sistema de cobros (26/10): lo que Oficy le cobra al prestador por mes (ver MiPlanSeccion).
+  { id: "plan", label: "Mi plan" },
   { id: "servicios", label: "Mis servicios" },
   { id: "acerca", label: "Acerca de mí" },
   { id: "cobertura", label: "Cobertura" },
@@ -55,6 +59,21 @@ export default function CuentaScreen() {
   const [perfil, setPerfil] = useState<PerfilPropio | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [seccion, setSeccion] = useState<Seccion>("perfil");
+  // Se puede entrar directo a una sección (ej. "Ir a Mi plan" desde un chat bloqueado):
+  // router.push({ pathname: "/cuenta", params: { seccion: "plan" } }). La pestaña queda montada,
+  // así que se escucha el cambio del parámetro y no solo el valor inicial.
+  const { seccion: seccionParam } = useLocalSearchParams<{ seccion?: string }>();
+  useEffect(() => {
+    if (seccionParam && SECCIONES.some((s) => s.id === seccionParam)) {
+      setSeccion(seccionParam as Seccion);
+      router.setParams({ seccion: undefined }); // para que un segundo "Ir a Mi plan" vuelva a funcionar
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seccionParam]);
+  // La pestaña "Cobros" (CBU/alias para que Oficy le transfiera) solo tiene sentido en el modo
+  // Retenido; en el Directo el cliente le paga directo al prestador (igual que en la web).
+  const configCobros = useConfigCobros();
+  const seccionesVisibles = SECCIONES.filter((s) => s.id !== "cobros" || configCobros?.modoCobro === "Retenido");
 
   // "Repostear" fotos de reseña (03/10, a pedido del usuario: "no está bien aplicada" — el backend
   // y la web ya tenían esto completo, pero mobile solo tenía el botón de "Pedir permiso" del
@@ -177,15 +196,15 @@ export default function CuentaScreen() {
 
       {esPrestador && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={{ gap: 8 }}>
-          {SECCIONES.map((s) => (
+          {seccionesVisibles.map((s) => (
             <Pressable
               key={s.id}
               onPress={() => setSeccion(s.id)}
               style={[
                 styles.tabChip,
                 {
-                  borderColor: seccion === s.id ? colors.copper : colors.border,
-                  backgroundColor: seccion === s.id ? colors.copper : "transparent",
+                  borderColor: seccion === s.id ? colors.copperAccion : colors.border,
+                  backgroundColor: seccion === s.id ? colors.copperAccion : "transparent",
                 },
               ]}
             >
@@ -217,7 +236,8 @@ export default function CuentaScreen() {
         {esPrestador && seccion === "horarios" && <HorariosSeccion />}
         {esPrestador && seccion === "verificacion" && <VerificacionSeccion />}
         {esPrestador && seccion === "cobros" && <CobrosSeccion perfil={perfil} onPerfilActualizado={setPerfil} />}
-        {esPrestador && seccion === "ganancias" && <GananciasSeccion />}
+        {esPrestador && seccion === "plan" && <MiPlanSeccion />}
+        {esPrestador && seccion === "ganancias" && <GananciasSeccion onIrAMiPlan={() => setSeccion("plan")} />}
       </View>
 
       {/* Toggle manual de tema (03/10, a pedido del usuario) — hasta ahora la app solo seguía el

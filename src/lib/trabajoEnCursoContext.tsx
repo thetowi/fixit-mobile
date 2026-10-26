@@ -3,7 +3,9 @@ import { apiFetch, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/authContext";
 import { suscribirseAActividadOrdenes } from "@/lib/actividadOrdenesContext";
 import { OrdenEnCurso } from "@/types/ordenes";
-import TrabajoEnCursoOverlay from "@/components/TrabajoEnCursoOverlay";
+import { View } from "react-native";
+import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
+import TrabajoEnCursoOverlay, { BannerTrabajoEnCurso } from "@/components/TrabajoEnCursoOverlay";
 
 // "Trabajo en curso" (24/09, a pedido del usuario): pantalla completa animada con timer en vivo
 // que aparece en el Inicio de Cliente y Prestador apenas se inicia un trabajo, y que se puede
@@ -27,6 +29,9 @@ interface TrabajoEnCursoContextValue {
   errorPausa: string | null;
   pausarTrabajo: (nota?: string) => Promise<void>;
   reanudarTrabajo: () => Promise<void>;
+  // Vuelve a preguntarle al backend qué hay en curso (ej. después de "Terminé", que para el
+  // prestador lo saca de en curso).
+  refrescar: () => Promise<void>;
 }
 
 const TrabajoEnCursoContext = createContext<TrabajoEnCursoContextValue | null>(null);
@@ -48,6 +53,7 @@ export function TrabajoEnCursoProvider({ children }: { children: ReactNode }) {
   const [errorPausa, setErrorPausa] = useState<string | null>(null);
 
   const ordenIdAnteriorRef = useRef<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   const refrescar = useCallback(async () => {
     if (!usuario) return;
@@ -113,12 +119,15 @@ export function TrabajoEnCursoProvider({ children }: { children: ReactNode }) {
     try {
       await apiFetch(`/api/ordenes/${ordenEnCurso.ordenId}/reanudar`, { method: "PUT" });
       setOrdenEnCurso((prev) => (prev ? { ...prev, pausadoEn: null, notaPausa: null } : prev));
+      // 27/10: al reanudar, el backend corre IniciadoEn lo que duró la pausa (si no, el timer
+      // sumaba el rato pausado). Lo volvemos a pedir para tener el inicio corregido.
+      await refrescar();
     } catch (err) {
       setErrorPausa(err instanceof ApiError ? err.message : "No pudimos reanudar el trabajo.");
     } finally {
       setReanudando(false);
     }
-  }, [ordenEnCurso]);
+  }, [ordenEnCurso, refrescar]);
 
   const finalizarTrabajo = useCallback(async () => {
     if (!ordenEnCurso) return;
@@ -133,6 +142,8 @@ export function TrabajoEnCursoProvider({ children }: { children: ReactNode }) {
       setFinalizando(false);
     }
   }, [ordenEnCurso]);
+
+  const bannerVisible = !!usuario && !!ordenEnCurso && minimizado;
 
   return (
     <TrabajoEnCursoContext.Provider
@@ -149,9 +160,18 @@ export function TrabajoEnCursoProvider({ children }: { children: ReactNode }) {
         errorPausa,
         pausarTrabajo,
         reanudarTrabajo,
+        refrescar,
       }}
     >
-      {children}
+      {/* Banner minimizado (27/10): arriba de la app y en flujo, así empuja el contenido en vez de
+          taparlo. Mientras se ve, las pantallas reciben el inset superior en 0 (el banner ya ocupa
+          la barra de estado) para no dejar un hueco doble. */}
+      <View style={{ flex: 1 }}>
+        {bannerVisible && <BannerTrabajoEnCurso />}
+        <SafeAreaInsetsContext.Provider value={bannerVisible ? { ...insets, top: 0 } : insets}>
+          <View style={{ flex: 1 }}>{children}</View>
+        </SafeAreaInsetsContext.Provider>
+      </View>
       <TrabajoEnCursoOverlay />
     </TrabajoEnCursoContext.Provider>
   );

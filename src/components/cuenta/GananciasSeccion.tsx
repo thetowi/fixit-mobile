@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiFetch, ApiError } from "@/lib/api";
 import { useFixitColors } from "@/hooks/use-fixit-colors";
+import { useConfigCobros } from "@/lib/cobros";
 import { GananciasResponse, PeriodoGanancias } from "@/types/ganancias";
 
 const PERIODOS: { id: PeriodoGanancias; label: string }[] = [
@@ -40,8 +41,13 @@ function etiquetaRango(datos: GananciasResponse): string {
 // Espejo mobile de fixit-web/components/GananciasSeccion.tsx (23/09): mismo modelo de datos
 // (GET /api/prestador/ganancias?periodo=&offset=), mismo cálculo de "Liberado" vs "Liquidado" —
 // acá con componentes nativos en vez de HTML/Tailwind, siguiendo el patrón de CobrosSeccion.tsx.
-export default function GananciasSeccion() {
+export default function GananciasSeccion({ onIrAMiPlan }: { onIrAMiPlan?: () => void } = {}) {
   const colors = useFixitColors();
+  // 26/10 (nuevo sistema de cobros): en modo Directo el prestador cobra directo al cliente, así que
+  // no hay "pendiente de transferir" ni "ya transferido": se muestran trabajos y promedio (igual
+  // que fixit-web/components/GananciasSeccion.tsx).
+  const configCobros = useConfigCobros();
+  const modoDirecto = configCobros?.modoCobro === "Directo";
   const [periodo, setPeriodo] = useState<PeriodoGanancias>("semana");
   const [offset, setOffset] = useState(0);
   const [datos, setDatos] = useState<GananciasResponse | null>(null);
@@ -117,31 +123,56 @@ export default function GananciasSeccion() {
                 </Text>
               )}
             </View>
-            <View style={styles.filaCards}>
-              <View style={[styles.card, styles.cardMitad, { borderColor: colors.border }]}>
-                <Text style={[styles.cardLabel, { color: colors.inkMuted }]}>Pendiente</Text>
-                <Text style={[styles.cardMonto, { color: colors.safety, fontSize: 16 }]}>{formatearMonto(datos.totalPendiente)}</Text>
-              </View>
-              <View style={[styles.card, styles.cardMitad, { borderColor: colors.border }]}>
-                <Text style={[styles.cardLabel, { color: colors.inkMuted }]}>Transferido</Text>
-                <Text style={[styles.cardMonto, { color: colors.stamp, fontSize: 16 }]}>{formatearMonto(datos.totalTransferido)}</Text>
-              </View>
-            </View>
-            <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
-              {datos.trabajosCompletados} trabajo{datos.trabajosCompletados === 1 ? "" : "s"} · promedio {formatearMonto(datos.promedioPorTrabajo)}
-              {datos.totalPendiente > 0 ? " · pendiente: esperando que un Admin te transfiera" : ""}
-            </Text>
+            {modoDirecto ? (
+              <>
+                <View style={styles.filaCards}>
+                  <View style={[styles.card, styles.cardMitad, { borderColor: colors.border }]}>
+                    <Text style={[styles.cardLabel, { color: colors.inkMuted }]}>Trabajos confirmados</Text>
+                    <Text style={[styles.cardMonto, { color: colors.ink, fontSize: 16 }]}>{datos.trabajosCompletados}</Text>
+                  </View>
+                  <View style={[styles.card, styles.cardMitad, { borderColor: colors.border }]}>
+                    <Text style={[styles.cardLabel, { color: colors.inkMuted }]}>Promedio por trabajo</Text>
+                    <Text style={[styles.cardMonto, { color: colors.stamp, fontSize: 16 }]}>{formatearMonto(datos.promedioPorTrabajo)}</Text>
+                  </View>
+                </View>
+                <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
+                  Cobrados directo al cliente. El cargo de Oficy lo ves en{" "}
+                  <Text onPress={onIrAMiPlan} style={{ color: colors.copperText, fontWeight: "600" }}>
+                    Mi plan
+                  </Text>
+                  .
+                </Text>
+              </>
+            ) : (
+              <>
+                <View style={styles.filaCards}>
+                  <View style={[styles.card, styles.cardMitad, { borderColor: colors.border }]}>
+                    <Text style={[styles.cardLabel, { color: colors.inkMuted }]}>Pendiente</Text>
+                    <Text style={[styles.cardMonto, { color: colors.safetyText, fontSize: 16 }]}>{formatearMonto(datos.totalPendiente)}</Text>
+                  </View>
+                  <View style={[styles.card, styles.cardMitad, { borderColor: colors.border }]}>
+                    <Text style={[styles.cardLabel, { color: colors.inkMuted }]}>Transferido</Text>
+                    <Text style={[styles.cardMonto, { color: colors.stamp, fontSize: 16 }]}>{formatearMonto(datos.totalTransferido)}</Text>
+                  </View>
+                </View>
+                <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
+                  {datos.trabajosCompletados} trabajo{datos.trabajosCompletados === 1 ? "" : "s"} · promedio {formatearMonto(datos.promedioPorTrabajo)}
+                  {datos.totalPendiente > 0 ? " · pendiente: esperando que un Admin te transfiera" : ""}
+                </Text>
+              </>
+            )}
           </View>
 
-          {/* Progreso hacia 10 trabajos gratis */}
+          {/* Progreso hacia los trabajos sin comisión. El tope sale del backend (pagados + restantes),
+              no está hardcodeado: así sigue bien si se vuelve a cambiar (hoy 5). */}
           {datos.trabajosGratisRestantes > 0 && (
             <View style={[styles.progresoBox, { borderColor: colors.border }]}>
               <View style={styles.filaEntre}>
                 <Text style={{ color: colors.inkMuted, fontSize: 12 }}>Trabajos sin comisión</Text>
-                <Text style={{ color: colors.ink, fontSize: 12, fontWeight: "600" }}>{datos.trabajosPagadosTotal}/10</Text>
+                <Text style={{ color: colors.ink, fontSize: 12, fontWeight: "600" }}>{datos.trabajosPagadosTotal}/{datos.trabajosPagadosTotal + datos.trabajosGratisRestantes}</Text>
               </View>
               <View style={[styles.barraFondo, { backgroundColor: colors.border }]}>
-                <View style={[styles.barraProgreso, { backgroundColor: colors.copper, width: `${Math.min(100, (datos.trabajosPagadosTotal / 10) * 100)}%` }]} />
+                <View style={[styles.barraProgreso, { backgroundColor: colors.copper, width: `${Math.min(100, (datos.trabajosPagadosTotal / (datos.trabajosPagadosTotal + datos.trabajosGratisRestantes)) * 100)}%` }]} />
               </View>
               <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 6 }}>
                 Te quedan {datos.trabajosGratisRestantes} trabajo{datos.trabajosGratisRestantes === 1 ? "" : "s"} antes de que empiece a aplicarse la comisión.
@@ -208,7 +239,7 @@ export default function GananciasSeccion() {
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
                         <Text style={{ color: colors.ink, fontSize: 14, fontWeight: "600" }}>{formatearMonto(t.neto)}</Text>
-                        <Text style={{ color: t.estado === "Liquidado" ? colors.stamp : colors.safety, fontSize: 10, fontWeight: "700", marginTop: 2 }}>
+                        <Text style={{ color: t.estado === "Liquidado" || t.estado === "Cobrado" ? colors.stamp : colors.safetyText, fontSize: 10, fontWeight: "700", marginTop: 2 }}>
                           {t.estado.toUpperCase()}
                         </Text>
                       </View>
@@ -217,7 +248,8 @@ export default function GananciasSeccion() {
                       <View style={[styles.detalleExpandido, { borderColor: colors.border }]}>
                         <Text style={{ color: colors.inkMuted, fontSize: 12 }}>{t.descripcion}</Text>
                         <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 3 }}>
-                          Monto total: {formatearMonto(t.montoTotal)} · Comisión FixIt: {formatearMonto(t.comisionPlataforma)}
+                          Monto total: {formatearMonto(t.montoTotal)}
+                          {t.comisionPlataforma > 0 ? ` · Comisión Oficy: ${formatearMonto(t.comisionPlataforma)}` : ""}
                         </Text>
                       </View>
                     )}

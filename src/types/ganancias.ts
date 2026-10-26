@@ -15,7 +15,8 @@ export interface GananciasTrabajo {
   montoTotal: number;
   comisionPlataforma: number;
   neto: number;
-  estado: "Liberado" | "Liquidado";
+  // "Cobrado" (26/10): modo Directo, el cliente le pagó directo al prestador (no hay Pago en Oficy).
+  estado: "Liberado" | "Liquidado" | "Cobrado";
 }
 
 export interface GananciasResponse {

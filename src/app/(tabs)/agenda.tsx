@@ -216,6 +216,7 @@ export default function AgendaScreen() {
       setHoraTurno(new Date(2000, 0, 1, 9, 0));
     }
     setDuracionTurno(orden.duracionMinutos ?? 60);
+    setModalDuracionAbierto(false);
     setError(null);
   }
 
@@ -456,7 +457,36 @@ export default function AgendaScreen() {
                 />
 
                 <Text style={{ color: colors.inkMuted, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Duración del trabajo</Text>
-                <BotonSelector label={formatoDuracion(duracionTurno)} onPress={() => setModalDuracionAbierto(true)} />
+                <BotonSelector label={formatoDuracion(duracionTurno)} onPress={() => setModalDuracionAbierto((v) => !v)} />
+                {/* Fix (27/10, reportado por el usuario: "cuando elegís fecha, hora y duración se rompe
+                    la visual"): la duración se elegía en un SelectorModal, o sea un <Modal> adentro de
+                    este otro <Modal>. En Android los modales anidados rompen el dibujado del de abajo
+                    al cerrarse. Ahora las opciones se despliegan acá mismo, como chips. */}
+                {modalDuracionAbierto && (
+                  <View style={styles.chipsDuracion}>
+                    {DURACIONES_PREDEFINIDAS_MINUTOS.map((min) => {
+                      const elegida = min === duracionTurno;
+                      return (
+                        <Pressable
+                          key={min}
+                          onPress={() => {
+                            setDuracionTurno(min);
+                            setModalDuracionAbierto(false);
+                          }}
+                          style={[
+                            styles.chipDuracion,
+                            {
+                              borderColor: elegida ? colors.copperAccion : colors.border,
+                              backgroundColor: elegida ? colors.copperAccion : "transparent",
+                            },
+                          ]}
+                        >
+                          <Text style={{ color: elegida ? colors.paper : colors.ink, fontSize: 12.5 }}>{formatoDuracion(min)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
 
                 {mostrarPickerFecha && (
                   <DateTimePicker
@@ -480,14 +510,6 @@ export default function AgendaScreen() {
                     }}
                   />
                 )}
-                <SelectorModal
-                  visible={modalDuracionAbierto}
-                  titulo="Duración del trabajo"
-                  valorActual={String(duracionTurno)}
-                  opciones={DURACIONES_PREDEFINIDAS_MINUTOS.map((min) => ({ value: String(min), label: formatoDuracion(min) }))}
-                  onSeleccionar={(v) => setDuracionTurno(Number(v))}
-                  onCerrar={() => setModalDuracionAbierto(false)}
-                />
 
                 {esReprogramacion && (
                   <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 8 }}>
@@ -575,7 +597,9 @@ const styles = StyleSheet.create({
   filaEncabezadoCalendario: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, paddingBottom: 10, marginBottom: 12 },
   filaNav: { flexDirection: "row", alignItems: "center", gap: 10 },
   fondoModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
-  modalProgramar: { borderWidth: 1, borderRadius: 14, padding: 18, width: "100%" },
+  modalProgramar: { borderWidth: 1, borderRadius: 14, padding: 18, width: "100%", maxHeight: "90%" },
+  chipsDuracion: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  chipDuracion: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   botonCancelar: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
   botonConfirmar: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
 });

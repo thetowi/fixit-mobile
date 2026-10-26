@@ -12,6 +12,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useAuth } from "@/lib/authContext";
+import { apiFetch, ApiError } from "@/lib/api";
 import { useTrabajoEnCurso } from "@/lib/trabajoEnCursoContext";
 import { iconoCategoria } from "@/lib/iconosCategoria";
 
@@ -40,7 +41,10 @@ function formatearTiempo(segundosTotales: number): string {
 
 // Pausar trabajo en curso (03/10): con pausadoEn seteado, el timer se congela en el momento de
 // la pausa en vez de seguir sumando — no hace falta un intervalo, un solo cálculo alcanza.
-function useTimer(iniciadoEn: string | undefined, pausadoEn: string | null | undefined) {
+// 27/10: también se congela cuando el prestador tocó "Terminé" (terminadoEn): desde ahí el
+// cliente ve el tiempo final mientras decide si confirma.
+function useTimer(iniciadoEn: string | undefined, pausadoEnOriginal: string | null | undefined, terminadoEn?: string | null) {
+  const pausadoEn = terminadoEn ?? pausadoEnOriginal;
   const [segundos, setSegundos] = useState(0);
   useEffect(() => {
     if (!iniciadoEn) return;
@@ -187,11 +191,67 @@ export default function TrabajoEnCursoOverlay() {
     errorPausa,
     pausarTrabajo,
     reanudarTrabajo,
+    refrescar,
   } = useTrabajoEnCurso();
   const parpadeo = useParpadeo();
-  const tiempo = useTimer(ordenEnCurso?.iniciadoEn, ordenEnCurso?.pausadoEn);
+  const tiempo = useTimer(ordenEnCurso?.iniciadoEn, ordenEnCurso?.pausadoEn, ordenEnCurso?.terminadoPorPrestadorEn);
   const [mostrarFormPausa, setMostrarFormPausa] = useState(false);
   const [notaPausa, setNotaPausa] = useState("");
+
+  // Nuevo sistema de cobros (26/10, espejo de fixit-web/components/TrabajoEnCursoOverlay.tsx): el
+  // prestador avisa "Terminé" desde acá (el cliente tiene 72 h para confirmar o reportar), y el
+  // cliente puede reportar un problema (la orden pasa a revisión y no se confirma sola).
+  const [marcandoTerminado, setMarcandoTerminado] = useState(false);
+  const [terminadoMarcado, setTerminadoMarcado] = useState(false);
+  const [mostrarFormProblema, setMostrarFormProblema] = useState(false);
+  const [comentarioProblema, setComentarioProblema] = useState("");
+  const [reportando, setReportando] = useState(false);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
+  const ordenId = ordenEnCurso?.ordenId;
+  useEffect(() => {
+    setTerminadoMarcado(false);
+    setMostrarFormProblema(false);
+    setErrorCierre(null);
+  }, [ordenId]);
+
+  async function marcarTerminado() {
+    if (!ordenId) return;
+    setMarcandoTerminado(true);
+    setErrorCierre(null);
+    try {
+      await apiFetch(`/api/ordenes/${ordenId}/terminado`, { method: "PUT" });
+      setTerminadoMarcado(true);
+      // 27/10 (reportado por el usuario: "al prestador se le fue solo el botón, pero sigue la
+      // pantalla y el contador"): para el prestador el trabajo ya terminó. El backend deja de
+      // devolverlo como en curso, así que al refrescar se cierra la pantalla y el timer.
+      await refrescar();
+    } catch (err) {
+      setErrorCierre(err instanceof ApiError ? err.message : "No pudimos marcar el trabajo como terminado.");
+    } finally {
+      setMarcandoTerminado(false);
+    }
+  }
+
+  async function reportarProblema() {
+    if (!ordenId) return;
+    setReportando(true);
+    setErrorCierre(null);
+    try {
+      await apiFetch(`/api/ordenes/${ordenId}/reportar-problema`, {
+        method: "PUT",
+        body: JSON.stringify({ comentario: comentarioProblema.trim() || undefined }),
+      });
+      setMostrarFormProblema(false);
+      setComentarioProblema("");
+      // La orden pasa a "EnDisputa" y deja de estar en curso: el contexto la saca en el próximo
+      // refresco y el overlay se cierra solo.
+      minimizar();
+    } catch (err) {
+      setErrorCierre(err instanceof ApiError ? err.message : "No pudimos reportar el problema.");
+    } finally {
+      setReportando(false);
+    }
+  }
 
   if (!ordenEnCurso || !usuario) return null;
 
@@ -199,31 +259,10 @@ export default function TrabajoEnCursoOverlay() {
   const esCliente = usuario.rol === "Cliente";
   const otraParte = esCliente ? ordenEnCurso.prestadorNombreCompleto : ordenEnCurso.clienteNombreCompleto;
 
-  if (minimizado) {
-    return (
-      <Pressable
-        onPress={expandir}
-        style={[styles.banner, { paddingTop: insets.top + 10 }]}
-        accessibilityRole="button"
-        accessibilityLabel="Ver el trabajo en curso"
-      >
-        <View style={styles.bannerIcono}>
-          <Icono color={INK} size={16} strokeWidth={2} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            {!ordenEnCurso.pausadoEn && <Animated.View style={[styles.puntoVivoOscuro, parpadeo]} />}
-            <Text style={styles.bannerTitulo}>{ordenEnCurso.pausadoEn ? "PAUSADO" : "TRABAJO EN CURSO"}</Text>
-          </View>
-          <Text style={styles.bannerSubtitulo} numberOfLines={1}>
-            {ordenEnCurso.categoriaNombre} · con {otraParte}
-          </Text>
-        </View>
-        <Text style={styles.bannerTiempo}>{tiempo}</Text>
-        <ChevronRight color={INK} size={16} style={{ opacity: 0.65 }} />
-      </Pressable>
-    );
-  }
+  // Minimizado: el banner lo dibuja TrabajoEnCursoProvider arriba de todo, EN FLUJO (ver
+  // BannerTrabajoEnCurso más abajo). Acá no se desmonta nada: devolver null conserva el estado
+  // (ej. "Terminé" ya marcado) para cuando se vuelva a expandir.
+  if (minimizado) return null;
 
   // Fix (29/09, reportado por el usuario: "se pone la herramienta en la parte de abajo, se ve
   // roto"): este overlay se monta como hermano de <NavegacionSegunSesion/> en _layout.tsx, es
@@ -282,6 +321,7 @@ export default function TrabajoEnCursoOverlay() {
         <View style={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 24, gap: 12 }}>
           {errorFinalizar && <Text style={styles.error}>{errorFinalizar}</Text>}
           {errorPausa && <Text style={styles.error}>{errorPausa}</Text>}
+          {errorCierre && <Text style={styles.error}>{errorCierre}</Text>}
 
           {esCliente ? (
             ordenEnCurso.pausadoEn ? (
@@ -295,25 +335,59 @@ export default function TrabajoEnCursoOverlay() {
               </View>
             ) : (
               <>
+                {ordenEnCurso.terminadoPorPrestadorEn && (
+                  <View style={styles.esperaBox}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={[styles.esperaTexto, { fontWeight: "700" }]}>El profesional terminó el trabajo</Text>
+                      <Text style={styles.esperaTexto}>
+                        Confirmalo si quedó bien, o reportá un problema. Si no respondés en 72 h, se confirma solo.
+                      </Text>
+                    </View>
+                  </View>
+                )}
                 <Pressable
                   onPress={finalizarTrabajo}
                   disabled={finalizando}
                   style={[styles.botonFinalizar, finalizando && { opacity: 0.6 }]}
                 >
                   <Text style={styles.botonFinalizarTexto}>
-                    {finalizando ? "Finalizando..." : "Finalizar trabajo"}
+                    {finalizando
+                      ? "Confirmando..."
+                      : ordenEnCurso.terminadoPorPrestadorEn
+                        ? "Confirmar que terminó"
+                        : "Finalizar trabajo"}
                   </Text>
                 </Pressable>
-                <Pressable
-                  onPress={() =>
-                    // El flujo completo de reclamos/disputas todavía no está construido (queda para
-                    // más adelante, junto con Mercado Pago) — por ahora dejamos la salida visible
-                    // pero avisando que está en camino, en vez de fingir que ya hace algo.
-                    alert("Pronto vas a poder reportar un problema desde acá. Mientras tanto, contactanos por el chat.")
-                  }
-                >
-                  <Text style={styles.botonReportar}>Reportar un problema</Text>
-                </Pressable>
+                {mostrarFormProblema ? (
+                  <View style={styles.formPausa}>
+                    <TextInput
+                      placeholder="Contanos qué pasó con el trabajo (opcional). Lo revisamos con el profesional."
+                      placeholderTextColor="rgba(244,241,234,0.55)"
+                      value={comentarioProblema}
+                      onChangeText={setComentarioProblema}
+                      style={styles.inputNotaPausa}
+                      multiline
+                    />
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Pressable onPress={() => setMostrarFormProblema(false)} style={styles.botonCancelarPausa}>
+                        <Text style={{ color: PAPER, fontSize: 13, opacity: 0.8, textAlign: "center" }}>Cancelar</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={reportarProblema}
+                        disabled={reportando}
+                        style={[styles.botonConfirmarPausa, reportando && { opacity: 0.6 }]}
+                      >
+                        <Text style={{ color: PAPER, fontSize: 13, fontWeight: "600", textAlign: "center" }}>
+                          {reportando ? "Enviando..." : "Reportar"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Pressable onPress={() => setMostrarFormProblema(true)}>
+                    <Text style={styles.botonReportar}>Reportar un problema</Text>
+                  </Pressable>
+                )}
               </>
             )
           ) : ordenEnCurso.pausadoEn ? (
@@ -369,6 +443,15 @@ export default function TrabajoEnCursoOverlay() {
             </View>
           ) : (
             <>
+              {!terminadoMarcado && (
+                <Pressable
+                  onPress={marcarTerminado}
+                  disabled={marcandoTerminado}
+                  style={[styles.botonFinalizar, marcandoTerminado && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.botonFinalizarTexto}>{marcandoTerminado ? "Avisando..." : "Terminé"}</Text>
+                </Pressable>
+              )}
               <Pressable onPress={() => setMostrarFormPausa(true)} style={styles.botonPausar}>
                 <Text style={styles.botonPausarTexto}>Pausar trabajo</Text>
               </Pressable>
@@ -378,7 +461,11 @@ export default function TrabajoEnCursoOverlay() {
                   <PuntoEspera delayMs={150} />
                   <PuntoEspera delayMs={300} />
                 </View>
-                <Text style={styles.esperaTexto}>Esperando que el cliente confirme la finalización</Text>
+                <Text style={[styles.esperaTexto, { flex: 1 }]}>
+                  {terminadoMarcado
+                    ? "Le avisamos al cliente. Si no responde en 72 h, se confirma solo. También podés cargar su código en Mis órdenes."
+                    : "Cuando termines, tocá «Terminé» o cargá el código del cliente en Mis órdenes."}
+                </Text>
               </View>
             </>
           )}
@@ -500,18 +587,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   banner: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     backgroundColor: COPPER,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    zIndex: 1000,
-    elevation: 1000,
   },
   bannerIcono: {
     width: 34,
@@ -525,3 +606,47 @@ const styles = StyleSheet.create({
   bannerSubtitulo: { fontSize: 12, color: "rgba(18,21,27,0.7)", marginTop: 1 },
   bannerTiempo: { fontSize: 16, fontWeight: "600", color: INK, fontVariant: ["tabular-nums"] },
 });
+
+// Banner del trabajo en curso minimizado (27/10, reportado por el usuario: "cuando minimizás se
+// rompe la visual porque se pone arriba y tapa los elementos que estaban ahí"). Antes era una View
+// position:absolute encima de la pantalla, así que tapaba el encabezado de cada pestaña. Ahora
+// TrabajoEnCursoProvider lo renderiza ARRIBA del contenido, en flujo: empuja la app hacia abajo en
+// vez de taparla (y le pasa a las pantallas un inset superior en 0, porque el banner ya ocupa la
+// zona de la barra de estado — ver trabajoEnCursoContext.tsx).
+export function BannerTrabajoEnCurso() {
+  const insets = useSafeAreaInsets();
+  const { usuario } = useAuth();
+  const { ordenEnCurso, expandir } = useTrabajoEnCurso();
+  const parpadeo = useParpadeo();
+  const tiempo = useTimer(ordenEnCurso?.iniciadoEn, ordenEnCurso?.pausadoEn, ordenEnCurso?.terminadoPorPrestadorEn);
+
+  if (!ordenEnCurso || !usuario) return null;
+
+  const Icono = iconoCategoria(ordenEnCurso.categoriaIcono);
+  const otraParte =
+    usuario.rol === "Cliente" ? ordenEnCurso.prestadorNombreCompleto : ordenEnCurso.clienteNombreCompleto;
+
+  return (
+    <Pressable
+      onPress={expandir}
+      style={[styles.banner, { paddingTop: insets.top + 10 }]}
+      accessibilityRole="button"
+      accessibilityLabel="Ver el trabajo en curso"
+    >
+      <View style={styles.bannerIcono}>
+        <Icono color={INK} size={16} strokeWidth={2} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {!ordenEnCurso.pausadoEn && <Animated.View style={[styles.puntoVivoOscuro, parpadeo]} />}
+          <Text style={styles.bannerTitulo}>{ordenEnCurso.pausadoEn ? "PAUSADO" : "TRABAJO EN CURSO"}</Text>
+        </View>
+        <Text style={styles.bannerSubtitulo} numberOfLines={1}>
+          {ordenEnCurso.categoriaNombre} · con {otraParte}
+        </Text>
+      </View>
+      <Text style={styles.bannerTiempo}>{tiempo}</Text>
+      <ChevronRight color={INK} size={16} style={{ opacity: 0.65 }} />
+    </Pressable>
+  );
+}

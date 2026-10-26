@@ -16,6 +16,10 @@ export interface Conversacion {
   // Aviso de "no pagues/cobres por fuera de la app" (29/09) — ya resuelto por el backend contra
   // el rol de quien lo pide, ver ConversacionService en fixit-api.
   avisoPagoVisto: boolean;
+  // Chat bloqueado (26/10): el prestador está suspendido por un resumen impago y no hay un trabajo
+  // activo en esta conversación. El motivo ya viene redactado según quién lo pide.
+  chatBloqueado?: boolean;
+  motivoChatBloqueado?: string | null;
 }
 
 export interface IniciarConversacionRequest {

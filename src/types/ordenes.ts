@@ -27,6 +27,20 @@ export interface Orden {
   // Pausar trabajo en curso (03/10, ver backend Orden.PausadoEn).
   pausadoEn?: string | null;
   notaPausa?: string | null;
+
+  // Nuevo sistema de cobros (26/10, espejo de fixit-web/types/ordenes.ts). codigoCierre solo viene
+  // para el cliente de la orden: es lo que le dicta al profesional al terminar.
+  yaCalificadaComoCliente?: boolean;
+  codigoCierre?: string | null;
+  codigoCierreBloqueado?: boolean;
+  terminadoPorPrestadorEn?: string | null;
+  confirmacionTipo?: "Cliente" | "Codigo" | "Automatica" | "Admin" | null;
+  problemaClienteReportadoEn?: string | null;
+  problemaClienteComentario?: string | null;
+  checkInEn?: string | null;
+  checkInDistanciaMetros?: number | null;
+  inasistenciaClienteReportadaEn?: string | null;
+  inasistenciaResueltaEn?: string | null;
 }
 
 // "Trabajo en curso" (24/09): espejo de FixIt.Application.DTOs.Ordenes.OrdenEnCursoResponse.
@@ -44,4 +58,7 @@ export interface OrdenEnCurso {
   // "Pausado" en vez de "en vivo" (ver TrabajoEnCursoOverlay.tsx).
   pausadoEn: string | null;
   notaPausa: string | null;
+  // 27/10: el prestador tocó "Terminé" y se espera la confirmación del cliente (solo le llega al
+  // cliente: al prestador el backend ya no le devuelve la orden como en curso).
+  terminadoPorPrestadorEn?: string | null;
 }

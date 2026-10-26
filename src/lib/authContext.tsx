@@ -2,12 +2,25 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import * as SecureStore from "expo-secure-store";
 import { Usuario } from "@/types/auth";
 import { registrarNotificacionesPush } from "@/lib/pushNotifications";
+import { registrarAlExpirarSesion } from "@/lib/api";
 
 // Espejo de fixit-web/lib/auth.ts, pero como Context de React en vez de funciones sueltas: acá
 // hace falta reaccionar a cambios de sesión en toda la app (mostrar/ocultar pantallas protegidas),
 // mientras que en la web cada página simplemente relee localStorage cuando la necesita.
 const TOKEN_KEY = "fixit_token";
 const USUARIO_KEY = "fixit_usuario";
+
+// true si el JWT ya venció (lee el campo "exp" del payload, sin validar la firma: eso lo hace el
+// backend). Si no se puede leer, se asume vigente y decide el backend con su 401.
+function tokenVencido(token: string): boolean {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = JSON.parse(atob(payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=")));
+    return typeof json.exp === "number" && json.exp * 1000 <= Date.now();
+  } catch {
+    return false;
+  }
+}
 
 interface AuthContextValue {
   usuario: Usuario | null;
@@ -27,8 +40,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const raw = await SecureStore.getItemAsync(USUARIO_KEY);
-        setUsuario(raw ? JSON.parse(raw) : null);
+        const [raw, token] = await Promise.all([
+          SecureStore.getItemAsync(USUARIO_KEY),
+          SecureStore.getItemAsync(TOKEN_KEY),
+        ]);
+        // Sesión vencida (o sin token): se limpia y el layout raíz manda al login, en vez de
+        // arrancar "logueado" con un token que el backend rechaza.
+        if (!raw || !token || tokenVencido(token)) {
+          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await SecureStore.deleteItemAsync(USUARIO_KEY);
+          setUsuario(null);
+        } else {
+          setUsuario(JSON.parse(raw));
+        }
       } finally {
         setCargando(false);
       }
@@ -55,6 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await SecureStore.deleteItemAsync(USUARIO_KEY);
     setUsuario(null);
   }, []);
+
+  // Si el token vence con la app abierta, el primer 401 del backend cierra la sesión.
+  useEffect(() => {
+    registrarAlExpirarSesion(() => {
+      cerrarSesion();
+    });
+    return () => registrarAlExpirarSesion(null);
+  }, [cerrarSesion]);
 
   return (
     <AuthContext.Provider value={{ usuario, cargando, guardarSesion, cerrarSesion }}>

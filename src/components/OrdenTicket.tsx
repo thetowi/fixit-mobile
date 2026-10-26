@@ -7,6 +7,8 @@ import { useFixitColors } from "@/hooks/use-fixit-colors";
 export const ESTADO_LABELS: Record<string, string> = {
   PendientePago: "Pendiente de pago",
   Pagado: "Pagado",
+  // Nuevo sistema de cobros (26/10): el cliente aceptó la oferta y le paga directo al profesional.
+  Aceptada: "Aceptada",
   EnCurso: "En curso",
   Completado: "Completado",
   Cancelado: "Cancelado",
@@ -16,9 +18,10 @@ export const ESTADO_LABELS: Record<string, string> = {
 function colorEstado(estado: string, colors: ReturnType<typeof useFixitColors>): string {
   switch (estado) {
     case "Pagado":
-      return colors.copper;
+    case "Aceptada":
+      return colors.copperText;
     case "EnCurso":
-      return colors.safety;
+      return colors.safetyText;
     case "Completado":
       return colors.stamp;
     default:

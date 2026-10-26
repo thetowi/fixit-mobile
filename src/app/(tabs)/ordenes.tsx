@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -13,18 +14,29 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { apiFetch, ApiError } from "@/lib/api";
 import { apiUpload } from "@/lib/apiUpload";
 import { useRefrescoEnFoco } from "@/lib/useRefrescoEnFoco";
 import { useAuth } from "@/lib/authContext";
 import { useFixitColors } from "@/hooks/use-fixit-colors";
+import { HORAS_AUTO_CONFIRMACION } from "@/lib/cobros";
 import { Orden } from "@/types/ordenes";
 import { CrearCalificacionRequest, CRITERIOS_CALIFICACION } from "@/types/calificaciones";
 import OrdenTicket, { ESTADO_LABELS } from "@/components/OrdenTicket";
 import SelectorEstrellas from "@/components/SelectorEstrellas";
 import SelectorModal, { BotonSelector, OpcionSelector } from "@/components/SelectorModal";
 
-const ORDEN_ESTADOS = ["PendientePago", "Pagado", "EnCurso", "Completado", "Cancelado", "EnDisputa"];
+const ORDEN_ESTADOS = ["PendientePago", "Pagado", "Aceptada", "EnCurso", "Completado", "Cancelado", "EnDisputa"];
+
+// Nuevo sistema de cobros (26/10, espejo de fixit-web/app/ordenes/page.tsx): estados en los que el
+// trabajo está acordado y todavía no se confirmó. "Aceptada" es el modo Directo (el cliente le
+// paga directo al profesional).
+const ESTADOS_ABIERTOS = ["Aceptada", "EnCurso"];
+
+function fechaHoraCorta(fechaISO: string): string {
+  return new Date(fechaISO).toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
 const CALIFICACION_INICIAL: Omit<CrearCalificacionRequest, "comentario"> = {
   puntualidad: 0,
@@ -86,6 +98,14 @@ export default function OrdenesScreen() {
   const [fotosSeleccionadas, setFotosSeleccionadas] = useState<FotoSeleccionada[]>([]);
   const [subiendoFotos, setSubiendoFotos] = useState(false);
 
+  // Nuevo sistema de cobros (26/10): cierre del trabajo con el código del cliente, "Terminé",
+  // "Hubo un problema" y check-in "Llegué".
+  const [procesandoId, setProcesandoId] = useState<string | null>(null);
+  const [ordenCodigo, setOrdenCodigo] = useState<string | null>(null);
+  const [codigo, setCodigo] = useState("");
+  const [ordenProblema, setOrdenProblema] = useState<string | null>(null);
+  const [comentarioProblema, setComentarioProblema] = useState("");
+
   useEffect(() => {
     cargarOrdenes();
   }, []);
@@ -115,6 +135,102 @@ export default function OrdenesScreen() {
       await cargarOrdenes();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al actualizar la orden");
+    }
+  }
+
+  // ===== Nuevo sistema de cobros (26/10) =====
+  // El prestador avisa que terminó: el cliente tiene 72 h para confirmar o reportar un problema;
+  // si no responde, se confirma solo.
+  function handleTermine(ordenId: string) {
+    Alert.alert(
+      "¿Terminaste el trabajo?",
+      `Le vamos a pedir al cliente que lo confirme. Si no responde en ${HORAS_AUTO_CONFIRMACION} horas, se confirma solo.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Sí, terminé",
+          onPress: async () => {
+            setError(null);
+            setProcesandoId(ordenId);
+            try {
+              await apiFetch(`/api/ordenes/${ordenId}/terminado`, { method: "PUT" });
+              await cargarOrdenes();
+            } catch (err) {
+              setError(err instanceof ApiError ? err.message : "No pudimos marcar el trabajo como terminado");
+            } finally {
+              setProcesandoId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  // El prestador carga el código de 4 dígitos que le dicta el cliente: confirma el trabajo al toque.
+  async function handleCerrarConCodigo(ordenId: string) {
+    if (codigo.length !== 4) {
+      setError("El código tiene 4 dígitos.");
+      return;
+    }
+    setError(null);
+    setProcesandoId(ordenId);
+    try {
+      await apiFetch(`/api/ordenes/${ordenId}/cerrar-con-codigo`, {
+        method: "PUT",
+        body: JSON.stringify({ codigo }),
+      });
+      setOrdenCodigo(null);
+      setCodigo("");
+      await cargarOrdenes();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos confirmar el código");
+      await cargarOrdenes(); // por si se bloqueó el código
+    } finally {
+      setProcesandoId(null);
+    }
+  }
+
+  // Check-in "Llegué" (fase 4): el prestador manda su ubicación al llegar al domicilio. Le
+  // avisamos al cliente y queda como respaldo de que el trabajo se hizo.
+  async function handleLlegue(ordenId: string) {
+    setError(null);
+    setProcesandoId(ordenId);
+    try {
+      const permiso = await Location.requestForegroundPermissionsAsync();
+      if (!permiso.granted) {
+        setError("Necesitamos tu ubicación para avisarle al cliente que llegaste. Habilitá el permiso en los ajustes del teléfono.");
+        return;
+      }
+      const posicion = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await apiFetch(`/api/ordenes/${ordenId}/check-in`, {
+        method: "PUT",
+        body: JSON.stringify({ latitud: posicion.coords.latitude, longitud: posicion.coords.longitude }),
+      });
+      await cargarOrdenes();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos obtener tu ubicación. Probá de nuevo en un momento.");
+    } finally {
+      setProcesandoId(null);
+    }
+  }
+
+  // El cliente avisa que el trabajo no quedó bien: la orden pasa a revisión y no se confirma sola.
+  // (En la web es un prompt; acá un mini formulario, porque Alert.prompt solo existe en iOS.)
+  async function handleReportarProblema(ordenId: string) {
+    setError(null);
+    setProcesandoId(ordenId);
+    try {
+      await apiFetch(`/api/ordenes/${ordenId}/reportar-problema`, {
+        method: "PUT",
+        body: JSON.stringify({ comentario: comentarioProblema.trim() || undefined }),
+      });
+      setOrdenProblema(null);
+      setComentarioProblema("");
+      await cargarOrdenes();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos reportar el problema");
+    } finally {
+      setProcesandoId(null);
     }
   }
 
@@ -287,7 +403,7 @@ export default function OrdenesScreen() {
           return (
             <OrdenTicket key={o.id} orden={o} nombreContraparte={nombreContraparte}>
               <View style={styles.acciones}>
-                {esPrestador && o.estado === "Pagado" && (
+                {esPrestador && (o.estado === "Pagado" || o.estado === "Aceptada") && (
                   <Pressable
                     onPress={() => handleAccion(o.id, "iniciar")}
                     style={[styles.botonAccion, { backgroundColor: colors.ink }]}
@@ -296,13 +412,68 @@ export default function OrdenesScreen() {
                   </Pressable>
                 )}
 
-                {esCliente && o.estado === "EnCurso" && (
+                {esCliente && ESTADOS_ABIERTOS.includes(o.estado) && (
                   <Pressable
                     onPress={() => handleAccion(o.id, "completar")}
                     style={[styles.botonAccion, { backgroundColor: colors.ink }]}
                   >
                     <Text style={{ color: colors.paper, fontSize: 12, fontWeight: "600" }}>Confirmar terminado</Text>
                   </Pressable>
+                )}
+
+                {/* El cliente puede frenar la confirmación automática si el profesional marcó
+                    "Terminé" pero el trabajo no quedó bien. */}
+                {esCliente && ESTADOS_ABIERTOS.includes(o.estado) && o.terminadoPorPrestadorEn && ordenProblema !== o.id && (
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setComentarioProblema("");
+                      setOrdenProblema(o.id);
+                    }}
+                    style={[styles.botonAccionOutline, { borderColor: "#C0392B66" }]}
+                  >
+                    <Text style={{ color: "#C0392B", fontSize: 12, fontWeight: "600" }}>Hubo un problema</Text>
+                  </Pressable>
+                )}
+
+                {esPrestador && (o.estado === "Aceptada" || o.estado === "Pagado" || o.estado === "EnCurso") && !o.checkInEn && (
+                  <Pressable
+                    onPress={() => handleLlegue(o.id)}
+                    disabled={procesandoId === o.id}
+                    style={[styles.botonAccionOutline, { borderColor: colors.copper, opacity: procesandoId === o.id ? 0.5 : 1 }]}
+                  >
+                    <Text style={{ color: colors.copperText, fontSize: 12, fontWeight: "600" }}>Llegué</Text>
+                  </Pressable>
+                )}
+
+                {esPrestador && ESTADOS_ABIERTOS.includes(o.estado) && !o.codigoCierreBloqueado && ordenCodigo !== o.id && (
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setCodigo("");
+                      setOrdenCodigo(o.id);
+                    }}
+                    style={[styles.botonAccion, { backgroundColor: colors.copperAccion }]}
+                  >
+                    <Text style={{ color: colors.paper, fontSize: 12, fontWeight: "600" }}>Ingresar código del cliente</Text>
+                  </Pressable>
+                )}
+
+                {esPrestador && ESTADOS_ABIERTOS.includes(o.estado) && !o.terminadoPorPrestadorEn && (
+                  <Pressable
+                    onPress={() => handleTermine(o.id)}
+                    disabled={procesandoId === o.id}
+                    style={[styles.botonAccionOutline, { borderColor: colors.border, opacity: procesandoId === o.id ? 0.5 : 1 }]}
+                  >
+                    <Text style={{ color: colors.ink, fontSize: 12, fontWeight: "600" }}>Terminé</Text>
+                  </Pressable>
+                )}
+
+                {o.estado === "EnDisputa" && o.problemaClienteReportadoEn && (
+                  <Text style={{ color: colors.safetyText, fontSize: 12 }}>
+                    En revisión: {esCliente ? "reportaste" : "el cliente reportó"} un problema con el trabajo
+                    {o.problemaClienteComentario ? ` («${o.problemaClienteComentario}»)` : ""}.
+                  </Text>
                 )}
 
                 {esCliente && o.estado === "Completado" && !o.yaCalificada && (
@@ -321,6 +492,123 @@ export default function OrdenesScreen() {
                   <Text style={{ color: colors.inkMuted, fontSize: 12 }}>Ya calificaste este trabajo</Text>
                 )}
               </View>
+
+              {/* Nuevo sistema de cobros (26/10): código de cierre que el cliente le dicta al
+                  profesional cuando termina. Es lo que confirma que el trabajo se hizo por Oficy. */}
+              {esCliente && ESTADOS_ABIERTOS.includes(o.estado) && o.codigoCierre && (
+                <View style={[styles.cajaCodigo, { borderColor: `${colors.copper}4D`, backgroundColor: `${colors.copper}0D` }]}>
+                  <Text style={[styles.codigoCierre, { color: colors.ink }]}>{o.codigoCierre}</Text>
+                  <Text style={{ color: colors.inkMuted, fontSize: 11, lineHeight: 15, flex: 1 }}>
+                    Tu código de cierre. Dictáselo al profesional solo cuando el trabajo esté terminado y conforme.
+                  </Text>
+                </View>
+              )}
+
+              {o.checkInEn && ESTADOS_ABIERTOS.includes(o.estado) && (
+                <Text style={[styles.notaOrden, { color: colors.inkMuted }]}>
+                  {esCliente ? "El profesional avisó que llegó" : "Avisaste que llegaste"} a las{" "}
+                  {new Date(o.checkInEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                  {esPrestador && o.checkInDistanciaMetros != null && o.checkInDistanciaMetros > 500
+                    ? ` (a ${(o.checkInDistanciaMetros / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })} km de la dirección del cliente)`
+                    : ""}
+                  .
+                </Text>
+              )}
+
+              {esCliente && ESTADOS_ABIERTOS.includes(o.estado) && o.terminadoPorPrestadorEn && (
+                <Text style={[styles.notaOrden, { color: colors.inkMuted }]}>
+                  El profesional marcó el trabajo como terminado. Si no lo confirmás ni reportás un problema, se confirma
+                  solo el {fechaHoraCorta(new Date(new Date(o.terminadoPorPrestadorEn).getTime() + HORAS_AUTO_CONFIRMACION * 3600_000).toISOString())}.
+                </Text>
+              )}
+
+              {esPrestador && ESTADOS_ABIERTOS.includes(o.estado) && o.terminadoPorPrestadorEn && (
+                <Text style={[styles.notaOrden, { color: colors.inkMuted }]}>
+                  Esperando que el cliente confirme. Si no responde, se confirma solo a las {HORAS_AUTO_CONFIRMACION} horas.
+                </Text>
+              )}
+
+              {esPrestador && ESTADOS_ABIERTOS.includes(o.estado) && o.codigoCierreBloqueado && (
+                <Text style={[styles.notaOrden, { color: "#C0392B" }]}>
+                  El código se bloqueó por demasiados intentos. Marcá el trabajo como terminado y pedile al cliente que lo
+                  confirme desde la app.
+                </Text>
+              )}
+
+              {esPrestador && ordenCodigo === o.id && (
+                <View style={[styles.formCalificacion, { borderTopColor: colors.border }]}>
+                  <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
+                    Pedile al cliente el código de 4 dígitos que ve en su orden.
+                  </Text>
+                  <TextInput
+                    value={codigo}
+                    onChangeText={(t) => setCodigo(t.replace(/\D/g, "").slice(0, 4))}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    autoFocus
+                    textContentType="oneTimeCode"
+                    placeholder="0000"
+                    placeholderTextColor={colors.inkMuted}
+                    style={[styles.inputCodigo, { borderColor: colors.border, color: colors.ink }]}
+                  />
+                  <View style={styles.filaBotonesForm}>
+                    <Pressable
+                      onPress={() => {
+                        setOrdenCodigo(null);
+                        setCodigo("");
+                      }}
+                      style={[styles.botonAccionOutline, { borderColor: colors.border, flex: 1 }]}
+                    >
+                      <Text style={{ color: colors.ink, fontSize: 12, textAlign: "center" }}>Cancelar</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleCerrarConCodigo(o.id)}
+                      disabled={procesandoId === o.id || codigo.length !== 4}
+                      style={[
+                        styles.botonAccion,
+                        { backgroundColor: colors.copperAccion, flex: 1, opacity: procesandoId === o.id || codigo.length !== 4 ? 0.5 : 1 },
+                      ]}
+                    >
+                      <Text style={{ color: colors.paper, fontSize: 12, fontWeight: "600", textAlign: "center" }}>
+                        {procesandoId === o.id ? "Confirmando..." : "Confirmar trabajo"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {esCliente && ordenProblema === o.id && (
+                <View style={[styles.formCalificacion, { borderTopColor: colors.border }]}>
+                  <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
+                    Contanos qué pasó con el trabajo. Lo revisamos con el profesional y no se confirma solo mientras tanto.
+                  </Text>
+                  <TextInput
+                    placeholder="¿Qué no quedó bien? (opcional)"
+                    placeholderTextColor={colors.inkMuted}
+                    style={[styles.textarea, { borderColor: colors.border, color: colors.ink }]}
+                    value={comentarioProblema}
+                    onChangeText={setComentarioProblema}
+                    multiline
+                  />
+                  <View style={styles.filaBotonesForm}>
+                    <Pressable
+                      onPress={() => setOrdenProblema(null)}
+                      style={[styles.botonAccionOutline, { borderColor: colors.border, flex: 1 }]}
+                    >
+                      <Text style={{ color: colors.ink, fontSize: 12, textAlign: "center" }}>Cancelar</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleReportarProblema(o.id)}
+                      disabled={procesandoId === o.id}
+                      style={[styles.botonAccion, { backgroundColor: "#B03A2E", flex: 1, opacity: procesandoId === o.id ? 0.5 : 1 }]}
+                    >
+                      <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "600", textAlign: "center" }}>
+                        {procesandoId === o.id ? "Enviando..." : "Reportar problema"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
 
               {ordenCalificando === o.id && (
                 <View style={[styles.formCalificacion, { borderTopColor: colors.border }]}>
@@ -414,7 +702,7 @@ export default function OrdenesScreen() {
                     <Pressable
                       onPress={handleEnviarCalificacion}
                       disabled={subiendoFotos}
-                      style={[styles.botonAccion, { backgroundColor: colors.copper, flex: 1, opacity: subiendoFotos ? 0.6 : 1 }]}
+                      style={[styles.botonAccion, { backgroundColor: colors.copperAccion, flex: 1, opacity: subiendoFotos ? 0.6 : 1 }]}
                     >
                       <Text style={{ color: colors.paper, fontSize: 12, fontWeight: "600", textAlign: "center" }}>
                         {subiendoFotos ? "Enviando..." : "Enviar"}
@@ -450,6 +738,10 @@ const styles = StyleSheet.create({
   textarea: { borderWidth: 1, borderRadius: 8, padding: 8, minHeight: 60, fontSize: 13, textAlignVertical: "top" },
   filaBotonesForm: { flexDirection: "row", gap: 8, marginTop: 4 },
   bloqueFotos: { gap: 8 },
+  cajaCodigo: { marginTop: 10, borderWidth: 1, borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center", gap: 12 },
+  codigoCierre: { fontSize: 26, fontWeight: "700", letterSpacing: 6, fontVariant: ["tabular-nums"] },
+  notaOrden: { marginTop: 8, fontSize: 11.5, lineHeight: 16 },
+  inputCodigo: { borderWidth: 1, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, fontSize: 22, letterSpacing: 8, textAlign: "center" },
   grillaFotosResena: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   fotoResenaWrap: { width: 64, height: 64, borderRadius: 8, overflow: "hidden", position: "relative" },
   fotoResena: { width: "100%", height: "100%" },

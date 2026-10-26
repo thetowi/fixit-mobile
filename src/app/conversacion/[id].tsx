@@ -36,6 +36,7 @@ import { apiUpload, ArchivoParaSubir } from "@/lib/apiUpload";
 import { crearConexionChat } from "@/lib/chatConnection";
 import { refrescarConteoNoLeidos } from "@/lib/conteoNoLeidosContext";
 import { useAuth } from "@/lib/authContext";
+import { useConfigCobros } from "@/lib/cobros";
 import { useFixitColors } from "@/hooks/use-fixit-colors";
 import { Mensaje } from "@/types/mensajes";
 import { Conversacion } from "@/types/conversaciones";
@@ -193,12 +194,39 @@ function BurbujaEscribiendo({ colors, grabandoAudio }: { colors: Colors; graband
 //   find native module 'ExponentAV'" ahí; expo-audio/expo-video sí vienen incluidos en Expo Go).
 //   Implementación nueva de punta a punta, no hereda (pero tampoco resuelve sola) el historial de
 //   bugs de audio que tuvo la versión web.
+// Nuevo sistema de cobros (26/10, modo "Directo"): el cliente le paga directo al profesional, así
+// que el aviso ya no habla de pagar/cobrar por la app sino de acordar y confirmar el trabajo acá.
+// Mismos textos que fixit-web/app/conversaciones/[id]/page.tsx (AVISO_DIRECTO_TEXTO).
+const AVISO_DIRECTO_TEXTO = {
+  cliente: {
+    titulo: "Acordá el trabajo dentro de Oficy",
+    modal:
+      "Aceptá la oferta acá y confirmá el trabajo cuando esté terminado. El pago lo arreglás directo con el profesional. Si acordás el trabajo por fuera de la app, no vas a poder calificarlo ni pedirnos ayuda si algo sale mal.",
+    banner: "Aceptá la oferta y confirmá el trabajo en Oficy: así podés calificar y pedir ayuda si algo sale mal.",
+  },
+  prestador: {
+    titulo: "Acordá tus trabajos dentro de Oficy",
+    modal:
+      "Mandá la oferta acá y cerrá el trabajo con el código del cliente. Cobrás directo y completo. Los trabajos confirmados suman reseñas y te ayudan a aparecer primero. Arreglar trabajos por fuera de la app va contra los términos de uso.",
+    banner: "Mandá la oferta y cerrá el trabajo en Oficy: suma reseñas y te posiciona mejor.",
+  },
+};
+
+// SignalR entrega el motivo de una HubException como "... HubException: <motivo>" (ej. chat
+// bloqueado por suspensión, 26/10).
+function motivoHubException(err: unknown): string | null {
+  const texto = err instanceof Error ? err.message : "";
+  return texto.includes("HubException: ") ? texto.split("HubException: ").pop() ?? null : null;
+}
+
 export default function ConversacionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const conversacionId = id!;
   const router = useRouter();
   const colors = useFixitColors();
   const { usuario } = useAuth();
+  const configCobros = useConfigCobros();
+  const modoDirecto = configCobros?.modoCobro === "Directo";
   // Esta pantalla vive fuera del grupo de pestañas (ver src/app/_layout.tsx), así que no hereda
   // ningún padding de la tab bar — hay que dejarle lugar a mano a la barra de navegación del
   // sistema (los 3 botones o la barra de gestos de Android), o si no la barra de escribir/enviar
@@ -413,8 +441,9 @@ export default function ConversacionScreen() {
     setNuevoMensaje("");
     try {
       await conexionRef.current.invoke("EnviarMensaje", conversacionId, texto);
-    } catch {
-      setError("No se pudo enviar el mensaje.");
+    } catch (err) {
+      setNuevoMensaje(texto); // que no se pierda lo que escribió
+      setError(motivoHubException(err) || "No se pudo enviar el mensaje.");
     }
   }
 
@@ -577,6 +606,21 @@ export default function ConversacionScreen() {
       await WebBrowser.openBrowserAsync(resultado.initPoint);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al iniciar el pago");
+    } finally {
+      setPagando(false);
+    }
+  }
+
+  // Nuevo sistema de cobros (26/10): en modo Directo el cliente acepta la oferta (no paga por la
+  // app). El backend crea la orden y avisa por SignalR ("OfertaActualizada") a los dos.
+  async function handleAceptar(mensajeId: string) {
+    setPagando(true);
+    setError(null);
+    try {
+      const actualizada = await apiFetch<Mensaje>(`/api/conversaciones/ofertas/${mensajeId}/aceptar`, { method: "POST" });
+      setMensajes((prev) => prev.map((m) => (m.id === actualizada.id ? { ...m, ...actualizada } : m)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos aceptar la oferta");
     } finally {
       setPagando(false);
     }
@@ -774,9 +818,11 @@ export default function ConversacionScreen() {
           onLayout={() => scrollAlFinal(false)}
           style={[styles.bannerAvisoPago, { backgroundColor: `${colors.copper}14`, borderColor: `${colors.copper}33` }]}
         >
-          <ShieldCheck size={15} color={colors.copper} />
-          <Text style={[styles.bannerAvisoPagoTexto, { color: colors.copper }]} numberOfLines={2}>
-            {esCliente ? AVISO_PAGO_TEXTO.cliente.banner : AVISO_PAGO_TEXTO.prestador.banner}
+          <ShieldCheck size={15} color={colors.copperText} />
+          <Text style={[styles.bannerAvisoPagoTexto, { color: colors.copperText }]} numberOfLines={2}>
+            {modoDirecto
+              ? esCliente ? AVISO_DIRECTO_TEXTO.cliente.banner : AVISO_DIRECTO_TEXTO.prestador.banner
+              : esCliente ? AVISO_PAGO_TEXTO.cliente.banner : AVISO_PAGO_TEXTO.prestador.banner}
           </Text>
         </View>
       )}
@@ -803,6 +849,9 @@ export default function ConversacionScreen() {
               pagando={pagando}
               cancelando={cancelandoOfertaId === m.id}
               onPagar={() => handlePagar(m.id)}
+              onAceptar={() => handleAceptar(m.id)}
+              modoCobro={configCobros?.modoCobro ?? null}
+              chatBloqueado={!!conversacion?.chatBloqueado}
               onCancelar={() => handleCancelarOferta(m.id)}
               esPrestador={esPrestador}
               cancelandoVisita={!!m.visitaId && cancelandoVisitaId === m.visitaId}
@@ -842,7 +891,23 @@ export default function ConversacionScreen() {
       )}
 
       <View style={[styles.barraInferior, { borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
-        {grabando ? (
+        {/* Chat bloqueado (26/10): el prestador está suspendido por un resumen impago (ver backend
+            BloqueoChatSuspension). Se puede leer el historial, pero no escribir ni mandar ofertas. */}
+        {conversacion?.chatBloqueado ? (
+          <View style={[styles.cajaBloqueado, { borderColor: colors.border, backgroundColor: `${colors.ink}0D` }]}>
+            <Text style={{ color: colors.ink, fontSize: 13, lineHeight: 18 }}>
+              {conversacion.motivoChatBloqueado ?? "No podés escribir en esta conversación por el momento."}
+            </Text>
+            {esPrestador && (
+              <Pressable
+                onPress={() => router.push({ pathname: "/cuenta", params: { seccion: "plan" } })}
+                style={[styles.botonIrPlan, { backgroundColor: colors.copperAccion }]}
+              >
+                <Text style={{ color: colors.paper, fontSize: 13, fontWeight: "600" }}>Ir a Mi plan</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : grabando ? (
           <View style={[styles.filaGrabando, { borderColor: colors.border }]}>
             <View style={styles.puntoRojo} />
             <Text style={{ color: colors.ink, flex: 1, fontSize: 13 }}>Grabando... {formatoTiempo(segundosGrabados)}</Text>
@@ -1106,24 +1171,28 @@ export default function ConversacionScreen() {
       <Modal visible={mostrandoAvisoPago} transparent animationType="fade" onRequestClose={() => {}}>
         <View style={styles.fondoModal}>
           <View style={[styles.modalAvisoPago, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.iconoAvisoPago, { backgroundColor: colors.copper }]}>
+            <View style={[styles.iconoAvisoPago, { backgroundColor: colors.copperAccion }]}>
               <ShieldCheck size={22} color={colors.paper} />
             </View>
             <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "700", textAlign: "center", marginTop: 12 }}>
-              Antes de empezar a chatear
+              {modoDirecto
+                ? esCliente ? AVISO_DIRECTO_TEXTO.cliente.titulo : AVISO_DIRECTO_TEXTO.prestador.titulo
+                : "Antes de empezar a chatear"}
             </Text>
             <Text style={{ color: colors.inkMuted, fontSize: 13.5, textAlign: "center", marginTop: 8, lineHeight: 19 }}>
-              {esCliente ? AVISO_PAGO_TEXTO.cliente.modal : AVISO_PAGO_TEXTO.prestador.modal}
+              {modoDirecto
+                ? esCliente ? AVISO_DIRECTO_TEXTO.cliente.modal : AVISO_DIRECTO_TEXTO.prestador.modal
+                : esCliente ? AVISO_PAGO_TEXTO.cliente.modal : AVISO_PAGO_TEXTO.prestador.modal}
             </Text>
             <Pressable onPress={() => WebBrowser.openBrowserAsync("https://oficy.ar/terminos")} style={{ marginTop: 12 }}>
-              <Text style={{ color: colors.copper, fontSize: 12.5, textDecorationLine: "underline" }}>
-                Ver cómo funciona la garantía de Oficy
+              <Text style={{ color: colors.copperText, fontSize: 12.5, textDecorationLine: "underline" }}>
+                {modoDirecto ? "Ver los términos de uso" : "Ver cómo funciona la garantía de Oficy"}
               </Text>
             </Pressable>
             <Pressable
               onPress={handleConfirmarAvisoPago}
               disabled={confirmandoAvisoPago}
-              style={[styles.botonConfirmarAviso, { backgroundColor: colors.copper, opacity: confirmandoAvisoPago ? 0.6 : 1 }]}
+              style={[styles.botonConfirmarAviso, { backgroundColor: colors.copperAccion, opacity: confirmandoAvisoPago ? 0.6 : 1 }]}
             >
               {confirmandoAvisoPago ? (
                 <ActivityIndicator color={colors.paper} />
@@ -1146,6 +1215,9 @@ function BurbujaMensaje({
   pagando,
   cancelando,
   onPagar,
+  onAceptar,
+  modoCobro,
+  chatBloqueado,
   onCancelar,
   esPrestador,
   cancelandoVisita,
@@ -1161,6 +1233,10 @@ function BurbujaMensaje({
   pagando: boolean;
   cancelando: boolean;
   onPagar: () => void;
+  onAceptar: () => void;
+  // null mientras se carga la config (GET /api/publico/config): no se ofrece ni Aceptar ni Pagar.
+  modoCobro: "Directo" | "Retenido" | null;
+  chatBloqueado: boolean;
   onCancelar: () => void;
   esPrestador: boolean;
   cancelandoVisita: boolean;
@@ -1181,7 +1257,9 @@ function BurbujaMensaje({
             {esMio ? "ENVIASTE UNA OFERTA" : `${m.emisorNombre.toUpperCase()} TE ENVIÓ UNA OFERTA`}
           </Text>
           {(m.ofertaPagada || m.ofertaVigente) && (
-            <Text style={{ color: colorTextoHeader, fontSize: 9, fontWeight: "700" }}>{m.ofertaPagada ? "PAGADA" : "VIGENTE"}</Text>
+            <Text style={{ color: colorTextoHeader, fontSize: 9, fontWeight: "700" }}>
+              {m.ofertaPagada ? (modoCobro === "Directo" ? "ACEPTADA" : "PAGADA") : "VIGENTE"}
+            </Text>
           )}
         </View>
         <View style={[styles.cuerpoOferta, { backgroundColor: colors.surface }]}>
@@ -1190,7 +1268,16 @@ function BurbujaMensaje({
 
           {m.ofertaPagada ? (
             <>
-              <Text style={{ color: "#059669", fontSize: 12, marginTop: 10, fontWeight: "600" }}>✓ Esta oferta ya fue pagada</Text>
+              <Text style={{ color: "#059669", fontSize: 12, marginTop: 10, fontWeight: "600" }}>
+                ✓ {modoCobro === "Directo" ? "Oferta aceptada" : "Esta oferta ya fue pagada"}
+              </Text>
+              {modoCobro === "Directo" && (
+                <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
+                  {esCliente
+                    ? "El pago lo arreglás directo con el profesional. Tu código de cierre está en Mis órdenes."
+                    : "Cobrás directo al cliente. Al terminar, pedile el código de cierre."}
+                </Text>
+              )}
               {m.ofertaAgendadaEn && (
                 <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 4 }}>
                   Agendada el{" "}
@@ -1206,14 +1293,34 @@ function BurbujaMensaje({
                   {m.ofertaExpiraEn && new Date(m.ofertaExpiraEn).getTime() <= Date.now() ? "Esta oferta venció" : "Superada por una oferta más reciente"}
                 </Text>
               )}
-              {m.ofertaVigente && esCliente && !esMio && (
+              {m.ofertaVigente && esCliente && !esMio && modoCobro === "Directo" && (
+                <>
+                  <Pressable
+                    onPress={onAceptar}
+                    disabled={pagando || chatBloqueado}
+                    style={[styles.botonPagar, { opacity: pagando || chatBloqueado ? 0.5 : 1 }]}
+                  >
+                    {pagando ? (
+                      <ActivityIndicator color={colors.onSafety} />
+                    ) : (
+                      <Text style={{ color: colors.onSafety, fontWeight: "700", fontSize: 13 }}>Aceptar oferta</Text>
+                    )}
+                  </Pressable>
+                  <Text style={{ color: colors.inkMuted, fontSize: 10.5, marginTop: 6, lineHeight: 14 }}>
+                    Le pagás directo al profesional. Aceptar en Oficy te permite calificarlo y pedir ayuda si algo sale mal.
+                  </Text>
+                </>
+              )}
+              {m.ofertaVigente && esCliente && !esMio && modoCobro === "Retenido" && (
                 <Pressable onPress={onPagar} disabled={pagando} style={[styles.botonPagar, { opacity: pagando ? 0.6 : 1 }]}>
-                  {pagando ? <ActivityIndicator color={colors.ink} /> : <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>Pagar con Mercado Pago</Text>}
+                  {pagando ? <ActivityIndicator color={colors.onSafety} /> : <Text style={{ color: colors.onSafety, fontWeight: "700", fontSize: 13 }}>Pagar con Mercado Pago</Text>}
                 </Pressable>
               )}
               {m.ofertaVigente && esMio && (
                 <>
-                  <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 10 }}>Esperando que el cliente pague...</Text>
+                  <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 10 }}>
+                    {modoCobro === "Directo" ? "Esperando que el cliente acepte..." : "Esperando que el cliente pague..."}
+                  </Text>
                   <Pressable onPress={onCancelar} disabled={cancelando} style={[styles.botonCancelarOferta, { borderColor: colors.border }]}>
                     <Text style={{ color: colors.inkMuted, fontSize: 11 }}>{cancelando ? "Cancelando..." : "Cancelar oferta"}</Text>
                   </Pressable>
@@ -1423,6 +1530,12 @@ function BurbujaMensaje({
     <View style={[styles.burbujaTexto, { backgroundColor: esMio ? colors.ink : colors.surface, borderColor: colors.border, borderWidth: esMio ? 0 : 1, alignSelf: esMio ? "flex-end" : "flex-start" }]}>
       {!esMio && <Text style={{ color: colors.copper, fontSize: 11, marginBottom: 2 }}>{m.emisorNombre}</Text>}
       <Text style={{ color: esMio ? colors.paper : colors.ink, fontSize: 14 }}>{m.contenido}</Text>
+      {/* Filtro de contacto (26/10): aviso de por qué se ocultó parte del mensaje. */}
+      {m.contactoOculto && (
+        <Text style={{ color: esMio ? `${colors.paper}B3` : colors.inkMuted, fontSize: 11, marginTop: 4 }}>
+          Los datos de contacto se comparten cuando se acepta una oferta.
+        </Text>
+      )}
     </View>
   );
 }
@@ -1593,6 +1706,8 @@ const styles = StyleSheet.create({
   videoChat: { width: 240, height: 180, borderRadius: 10, backgroundColor: "#000" },
   burbujaAudio: { borderRadius: 14, padding: 10, width: 280, maxWidth: "78%" },
   burbujaTexto: { borderRadius: 12, padding: 10, maxWidth: "78%" },
+  cajaBloqueado: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 10, marginHorizontal: 4 },
+  botonIrPlan: { alignSelf: "flex-start", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   bannerAvisoPago: {
     flexDirection: "row",
     alignItems: "center",

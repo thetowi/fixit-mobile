@@ -37,4 +37,7 @@ export interface Mensaje {
   // persistido en el mensaje (no depende de haber estado conectado en vivo al momento del cambio).
   visitaEstado: "Programada" | "Realizada" | "Cancelada" | null;
   enviadoEn: string;
+  // Filtro de contacto (26/10): el backend reemplazó un teléfono/mail/link por "[dato de contacto
+  // oculto]" porque todavía no hay una oferta aceptada en esta conversación.
+  contactoOculto?: boolean;
 }
