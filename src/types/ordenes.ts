@@ -39,8 +39,13 @@ export interface Orden {
   problemaClienteComentario?: string | null;
   checkInEn?: string | null;
   checkInDistanciaMetros?: number | null;
+  // Resolución de disputas por Oficy (27/10): a favor de quién y la nota que ven las dos partes.
+  disputaResueltaEn?: string | null;
+  disputaResolucion?: "Cliente" | "Prestador" | null;
+  disputaNotaAdmin?: string | null;
   inasistenciaClienteReportadaEn?: string | null;
   inasistenciaResueltaEn?: string | null;
+  inasistenciaResolucion?: string | null;
 }
 
 // "Trabajo en curso" (24/09): espejo de FixIt.Application.DTOs.Ordenes.OrdenEnCursoResponse.

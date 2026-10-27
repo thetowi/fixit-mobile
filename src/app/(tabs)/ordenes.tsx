@@ -47,6 +47,16 @@ const CALIFICACION_INICIAL: Omit<CrearCalificacionRequest, "comentario"> = {
   garantia: 0,
 };
 
+// Calificación del cliente por parte del prestador (27/10, espejo de fixit-web/app/ordenes/page.tsx):
+// 3 criterios simples, a diferencia de los 6 con que el cliente califica el trabajo.
+type CalificacionClienteForm = { puntualidad: number; comunicacion: number; trato: number };
+const CALIFICACION_CLIENTE_INICIAL: CalificacionClienteForm = { puntualidad: 0, comunicacion: 0, trato: 0 };
+const CRITERIOS_CALIFICACION_CLIENTE: { key: keyof CalificacionClienteForm; label: string }[] = [
+  { key: "puntualidad", label: "Puntualidad" },
+  { key: "comunicacion", label: "Comunicación" },
+  { key: "trato", label: "Trato" },
+];
+
 // Foto elegida localmente para la reseña, todavía no subida (ver fotosSeleccionadas más abajo).
 type FotoSeleccionada = { uri: string; name: string; type: string };
 
@@ -105,6 +115,14 @@ export default function OrdenesScreen() {
   const [codigo, setCodigo] = useState("");
   const [ordenProblema, setOrdenProblema] = useState<string | null>(null);
   const [comentarioProblema, setComentarioProblema] = useState("");
+
+  // 27/10: lo que la web ya tenía y faltaba en la app — el prestador califica al cliente y puede
+  // reportar que el cliente no estaba en el domicilio.
+  const [ordenCalificandoCliente, setOrdenCalificandoCliente] = useState<string | null>(null);
+  const [calificacionClienteForm, setCalificacionClienteForm] = useState<CalificacionClienteForm>(CALIFICACION_CLIENTE_INICIAL);
+  const [comentarioCliente, setComentarioCliente] = useState("");
+  const [ordenInasistencia, setOrdenInasistencia] = useState<string | null>(null);
+  const [comentarioInasistencia, setComentarioInasistencia] = useState("");
 
   useEffect(() => {
     cargarOrdenes();
@@ -229,6 +247,51 @@ export default function OrdenesScreen() {
       await cargarOrdenes();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No pudimos reportar el problema");
+    } finally {
+      setProcesandoId(null);
+    }
+  }
+
+  async function handleEnviarCalificacionCliente() {
+    if (!ordenCalificandoCliente) return;
+    const faltantes = CRITERIOS_CALIFICACION_CLIENTE.filter((c) => calificacionClienteForm[c.key] === 0);
+    if (faltantes.length > 0) {
+      setError(`Te falta calificar: ${faltantes.map((c) => c.label).join(", ")}.`);
+      return;
+    }
+    setError(null);
+    setProcesandoId(ordenCalificandoCliente);
+    try {
+      await apiFetch(`/api/ordenes/${ordenCalificandoCliente}/calificacion-cliente`, {
+        method: "POST",
+        body: JSON.stringify({ ...calificacionClienteForm, comentario: comentarioCliente.trim() || undefined }),
+      });
+      setOrdenCalificandoCliente(null);
+      setCalificacionClienteForm(CALIFICACION_CLIENTE_INICIAL);
+      setComentarioCliente("");
+      await cargarOrdenes();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Error al calificar al cliente");
+    } finally {
+      setProcesandoId(null);
+    }
+  }
+
+  // Inasistencia del cliente: el prestador fue a la hora agendada y el cliente no estaba. El
+  // backend valida el margen de tolerancia y devuelve un error claro si todavía no pasó.
+  async function handleReportarInasistencia(ordenId: string) {
+    setError(null);
+    setProcesandoId(ordenId);
+    try {
+      await apiFetch(`/api/ordenes/${ordenId}/reportar-inasistencia-cliente`, {
+        method: "PUT",
+        body: JSON.stringify({ comentario: comentarioInasistencia.trim() || undefined }),
+      });
+      setOrdenInasistencia(null);
+      setComentarioInasistencia("");
+      await cargarOrdenes();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Error al reportar la inasistencia");
     } finally {
       setProcesandoId(null);
     }
@@ -491,6 +554,57 @@ export default function OrdenesScreen() {
                 {o.yaCalificada && (
                   <Text style={{ color: colors.inkMuted, fontSize: 12 }}>Ya calificaste este trabajo</Text>
                 )}
+
+                {esPrestador && o.estado === "Completado" && !o.yaCalificadaComoCliente && ordenCalificandoCliente !== o.id && (
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setCalificacionClienteForm(CALIFICACION_CLIENTE_INICIAL);
+                      setComentarioCliente("");
+                      setOrdenCalificandoCliente(o.id);
+                    }}
+                    style={[styles.botonAccionOutline, { borderColor: colors.border }]}
+                  >
+                    <Text style={{ color: colors.ink, fontSize: 12, fontWeight: "600" }}>Calificar cliente</Text>
+                  </Pressable>
+                )}
+
+                {esPrestador && o.yaCalificadaComoCliente && (
+                  <Text style={{ color: colors.inkMuted, fontSize: 12 }}>Ya calificaste a este cliente</Text>
+                )}
+
+                {esPrestador && (o.estado === "Pagado" || o.estado === "Aceptada") && o.fechaHoraProgramada && ordenInasistencia !== o.id && (
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setComentarioInasistencia("");
+                      setOrdenInasistencia(o.id);
+                    }}
+                    style={[styles.botonAccionOutline, { borderColor: "#C0392B66" }]}
+                  >
+                    <Text style={{ color: "#C0392B", fontSize: 12, fontWeight: "600" }}>El cliente no estaba</Text>
+                  </Pressable>
+                )}
+
+                {o.estado === "EnDisputa" && o.inasistenciaClienteReportadaEn && !o.inasistenciaResueltaEn && (
+                  <Text style={{ color: colors.safetyText, fontSize: 12 }}>
+                    En revisión: se reportó que el cliente no estaba en el domicilio.
+                  </Text>
+                )}
+
+                {o.disputaResueltaEn && (
+                  <Text style={{ color: colors.inkMuted, fontSize: 12 }}>
+                    Oficy resolvió la disputa a favor {o.disputaResolucion === "Prestador" ? "del profesional" : "del cliente"}
+                    {o.estado === "Completado" ? ": el trabajo quedó confirmado" : ": la orden quedó cancelada"}.
+                    {o.disputaNotaAdmin ? ` «${o.disputaNotaAdmin}»` : ""}
+                  </Text>
+                )}
+
+                {o.estado !== "EnDisputa" && !o.disputaResueltaEn && o.inasistenciaResueltaEn && (
+                  <Text style={{ color: colors.inkMuted, fontSize: 12 }}>
+                    Disputa por inasistencia resuelta{o.inasistenciaResolucion === "PagoPrestador" ? " a favor del prestador" : ""}.
+                  </Text>
+                )}
               </View>
 
               {/* Nuevo sistema de cobros (26/10): código de cierre que el cliente le dicta al
@@ -604,6 +718,83 @@ export default function OrdenesScreen() {
                     >
                       <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "600", textAlign: "center" }}>
                         {procesandoId === o.id ? "Enviando..." : "Reportar problema"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {esPrestador && ordenInasistencia === o.id && (
+                <View style={[styles.formCalificacion, { borderTopColor: colors.border }]}>
+                  <Text style={{ color: colors.inkMuted, fontSize: 11, lineHeight: 15 }}>
+                    Contanos brevemente qué pasó cuando llegaste (opcional). La orden pasa a revisión de un administrador.
+                  </Text>
+                  <TextInput
+                    placeholder="Ej. toqué timbre y llamé, nadie atendió"
+                    placeholderTextColor={colors.inkMuted}
+                    style={[styles.textarea, { borderColor: colors.border, color: colors.ink }]}
+                    value={comentarioInasistencia}
+                    onChangeText={setComentarioInasistencia}
+                    multiline
+                  />
+                  <View style={styles.filaBotonesForm}>
+                    <Pressable
+                      onPress={() => setOrdenInasistencia(null)}
+                      style={[styles.botonAccionOutline, { borderColor: colors.border, flex: 1 }]}
+                    >
+                      <Text style={{ color: colors.ink, fontSize: 12, textAlign: "center" }}>Cancelar</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleReportarInasistencia(o.id)}
+                      disabled={procesandoId === o.id}
+                      style={[styles.botonAccion, { backgroundColor: "#B03A2E", flex: 1, opacity: procesandoId === o.id ? 0.5 : 1 }]}
+                    >
+                      <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "600", textAlign: "center" }}>
+                        {procesandoId === o.id ? "Enviando..." : "Reportar"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {esPrestador && ordenCalificandoCliente === o.id && (
+                <View style={[styles.formCalificacion, { borderTopColor: colors.border }]}>
+                  <Text style={{ color: colors.inkMuted, fontSize: 11, marginBottom: 6 }}>¿Cómo fue trabajar con este cliente?</Text>
+                  {CRITERIOS_CALIFICACION_CLIENTE.map((criterio) => (
+                    <View key={criterio.key} style={styles.filaCriterio}>
+                      <Text style={{ color: colors.ink, fontSize: 12 }}>{criterio.label}</Text>
+                      <SelectorEstrellas
+                        valor={calificacionClienteForm[criterio.key]}
+                        onChange={(valor) => setCalificacionClienteForm((prev) => ({ ...prev, [criterio.key]: valor }))}
+                        tamaño={16}
+                      />
+                    </View>
+                  ))}
+                  <TextInput
+                    placeholder="Comentario (opcional)"
+                    placeholderTextColor={colors.inkMuted}
+                    style={[styles.textarea, { borderColor: colors.border, color: colors.ink }]}
+                    value={comentarioCliente}
+                    onChangeText={setComentarioCliente}
+                    multiline
+                  />
+                  <View style={styles.filaBotonesForm}>
+                    <Pressable
+                      onPress={() => {
+                        setError(null);
+                        setOrdenCalificandoCliente(null);
+                      }}
+                      style={[styles.botonAccionOutline, { borderColor: colors.border, flex: 1 }]}
+                    >
+                      <Text style={{ color: colors.ink, fontSize: 12, textAlign: "center" }}>Cancelar</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleEnviarCalificacionCliente}
+                      disabled={procesandoId === o.id}
+                      style={[styles.botonAccion, { backgroundColor: colors.copperAccion, flex: 1, opacity: procesandoId === o.id ? 0.6 : 1 }]}
+                    >
+                      <Text style={{ color: colors.paper, fontSize: 12, fontWeight: "600", textAlign: "center" }}>
+                        {procesandoId === o.id ? "Enviando..." : "Enviar"}
                       </Text>
                     </Pressable>
                   </View>

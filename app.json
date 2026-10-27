@@ -15,7 +15,7 @@
         "NSCameraUsageDescription": "Oficy usa la camara para que puedas sacar fotos y videos en el chat con tu cliente o prestador.",
         "NSMicrophoneUsageDescription": "Oficy usa el microfono para que puedas grabar audios en el chat.",
         "NSPhotoLibraryUsageDescription": "Oficy usa tus fotos para que puedas adjuntar imagenes en el chat y en tus trabajos realizados.",
-        "NSLocationWhenInUseUsageDescription": "Oficy usa tu ubicacion para configurar tu zona de cobertura como prestador."
+        "NSLocationWhenInUseUsageDescription": "Oficy usa tu ubicacion para configurar tu zona de cobertura como prestador y para avisarle al cliente que llegaste a su domicilio."
       }
     },
     "android": {
