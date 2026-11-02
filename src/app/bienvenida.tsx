@@ -49,7 +49,7 @@ const PASOS = [
   {
     Icono: ShieldCheck,
     etiqueta: "Paso 3",
-    texto: "Pagás recién cuando el trabajo esté terminado",
+    texto: "Acordás el precio antes y le pagás directo al profesional",
   },
 ];
 
@@ -280,7 +280,7 @@ export default function BienvenidaScreen() {
         <View style={[styles.insignias, { borderTopColor: colors.border }]}>
           <View style={styles.insigniaFila}>
             <ShieldCheck size={17} color={colors.stamp} strokeWidth={2.2} />
-            <Text style={[styles.insigniaTexto, { color: colors.ink }]}>Pago protegido hasta terminar el trabajo</Text>
+            <Text style={[styles.insigniaTexto, { color: colors.ink }]}>Precio acordado antes de empezar</Text>
           </View>
           <View style={styles.insigniaFila}>
             <BadgeCheck size={17} color={colors.stamp} strokeWidth={2.2} />

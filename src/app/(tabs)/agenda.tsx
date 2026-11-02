@@ -294,6 +294,7 @@ export default function AgendaScreen() {
 
   return (
     <ScrollView
+      keyboardShouldPersistTaps="handled"
       style={{ backgroundColor: colors.paper }}
       contentContainerStyle={[styles.contenido, { paddingTop: insets.top + 20 }]}
     >

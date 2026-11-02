@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "expo-router";
+import { rutaAppDesdeUrlWeb } from "@/lib/rutasNotificacion";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -63,8 +64,10 @@ export default function NotificacionesScreen() {
       });
       apiFetch(`/api/notificaciones/${n.id}/marcar-leida`, { method: "PUT" }).catch(() => {});
     }
-    if (n.url && n.url !== "/") {
-      router.push(n.url as never);
+    // 02/11: la URL viene con la ruta de la web; se traduce a la de la app (ver rutasNotificacion.ts).
+    const ruta = rutaAppDesdeUrlWeb(n.url);
+    if (ruta) {
+      router.push(ruta as never);
     }
   }
 

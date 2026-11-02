@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   Easing,
   FlatList,
   Image,
@@ -285,6 +286,18 @@ export default function ConversacionScreen() {
 
   const conexionRef = useRef<signalR.HubConnection | null>(null);
   const listaRef = useRef<FlatList<Mensaje>>(null);
+  // 02/11: el backend no distingue una oferta cancelada de una reemplazada (las dos quedan con
+  // OfertaVigente = false). Si después vino otra oferta, fue reemplazada; si no, la canceló el
+  // prestador.
+  const ofertasSuperadas = new Set<string>();
+  {
+    let hayPosterior = false;
+    for (let i = mensajes.length - 1; i >= 0; i--) {
+      if (mensajes[i].tipo !== "Oferta") continue;
+      if (hayPosterior) ofertasSuperadas.add(mensajes[i].id);
+      hayPosterior = true;
+    }
+  }
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const timerGrabacionRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const segundosGrabadosRef = useRef(0);
@@ -293,6 +306,41 @@ export default function ConversacionScreen() {
   const timeoutEscribiendoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ultimoAvisoEscribiendoRef = useRef(0);
   const timeoutGrabandoAudioRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 02/11 (prueba en Android: al volver la señal el chat quedaba muerto). Si la conexión está
+  // cortada, la vuelve a abrir y a unir a esta conversación; si está reconectando, espera.
+  async function asegurarConexion() {
+    const conexion = conexionRef.current;
+    if (!conexion) return;
+    if (conexion.state === signalR.HubConnectionState.Disconnected) {
+      await conexion.start();
+      await conexion.invoke("UnirseAConversacion", conversacionId);
+      setError(null);
+      recargarHistorial();
+    }
+  }
+
+  // Trae los mensajes que pudieron llegar mientras la conexión estaba cortada.
+  function recargarHistorial() {
+    apiFetch<Mensaje[]>(`/api/conversaciones/${conversacionId}/mensajes`)
+      .then((historial) => {
+        setMensajes(historial);
+        marcarLeidoYAvisar();
+      })
+      .catch(() => {});
+  }
+
+  // Al volver la app a primer plano, se asegura de que el chat siga conectado y al día.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (estado) => {
+      if (estado === "active") {
+        asegurarConexion().catch(() => {});
+        recargarHistorial();
+      }
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversacionId]);
 
   function marcarLeidoYAvisar() {
     apiFetch(`/api/conversaciones/${conversacionId}/mensajes/leido`, { method: "PUT" })
@@ -363,9 +411,23 @@ export default function ConversacionScreen() {
         });
 
         conexion.onreconnected(() => {
-          conexion.invoke("UnirseAConversacion", conversacionId).catch(() => {
-            setError("Se reconectó el chat pero no pudimos volver a unirte a la conversación. Volvé a entrar.");
-          });
+          conexion
+            .invoke("UnirseAConversacion", conversacionId)
+            .then(() => {
+              setError(null);
+              recargarHistorial();
+            })
+            .catch(() => {
+              setError("Se reconectó el chat pero no pudimos volver a unirte a la conversación. Volvé a entrar.");
+            });
+        });
+        // 02/11: si igual se corta del todo (ej. la app estuvo en segundo plano), se vuelve a
+        // conectar sola en vez de quedar muerta hasta salir y volver a entrar al chat.
+        conexion.onclose(() => {
+          if (!activo) return;
+          setTimeout(() => {
+            if (activo) asegurarConexion().catch(() => {});
+          }, 3000);
         });
 
         await conexion.start();
@@ -440,7 +502,11 @@ export default function ConversacionScreen() {
     const texto = nuevoMensaje.trim();
     setNuevoMensaje("");
     try {
+      if (conexionRef.current.state !== signalR.HubConnectionState.Connected) {
+        await asegurarConexion();
+      }
       await conexionRef.current.invoke("EnviarMensaje", conversacionId, texto);
+      setError(null);
     } catch (err) {
       setNuevoMensaje(texto); // que no se pierda lo que escribió
       setError(motivoHubException(err) || "No se pudo enviar el mensaje.");
@@ -840,6 +906,11 @@ export default function ConversacionScreen() {
           style={{ backgroundColor: "transparent" }}
           contentContainerStyle={{ padding: 14, gap: 8 }}
           onContentSizeChange={() => scrollAlFinal(false)}
+          // 02/11: con chats largos la lista virtualizada no llegaba a medir todo y el scroll al
+          // final quedaba corto. Se renderizan todos de entrada (los chats son de a cientos, no miles).
+          initialNumToRender={Math.max(30, mensajes.length)}
+          // 02/11: con el teclado abierto, el primer toque en un botón solo cerraba el teclado.
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item: m }) => (
             <BurbujaMensaje
               mensaje={m}
@@ -852,10 +923,22 @@ export default function ConversacionScreen() {
               onAceptar={() => handleAceptar(m.id)}
               modoCobro={configCobros?.modoCobro ?? null}
               chatBloqueado={!!conversacion?.chatBloqueado}
-              onCancelar={() => handleCancelarOferta(m.id)}
+              onCancelar={() =>
+                Alert.alert("¿Cancelar esta oferta?", "El cliente ya no la va a poder aceptar.", [
+                  { text: "No", style: "cancel" },
+                  { text: "Sí, cancelar", style: "destructive", onPress: () => handleCancelarOferta(m.id) },
+                ])
+              }
+              superada={ofertasSuperadas.has(m.id)}
               esPrestador={esPrestador}
               cancelandoVisita={!!m.visitaId && cancelandoVisitaId === m.visitaId}
-              onCancelarVisita={() => m.visitaId && handleCancelarVisita(m.visitaId)}
+              onCancelarVisita={() =>
+                m.visitaId &&
+                Alert.alert("¿Cancelar la visita?", "Le avisamos a la otra parte.", [
+                  { text: "No", style: "cancel" },
+                  { text: "Sí, cancelar", style: "destructive", onPress: () => m.visitaId && handleCancelarVisita(m.visitaId) },
+                ])
+              }
               marcandoVisitaRealizada={!!m.visitaId && marcandoRealizadaId === m.visitaId}
               onMarcarVisitaRealizada={() => m.visitaId && handleMarcarVisitaRealizada(m.visitaId)}
               onVerImagen={() => setImagenAmpliada(m.archivoUrl)}
@@ -1225,7 +1308,9 @@ function BurbujaMensaje({
   marcandoVisitaRealizada,
   onMarcarVisitaRealizada,
   onVerImagen,
+  superada = false,
 }: {
+  superada?: boolean;
   mensaje: Mensaje;
   esMio: boolean;
   esCliente: boolean;
@@ -1290,7 +1375,11 @@ function BurbujaMensaje({
             <>
               {!m.ofertaVigente && (
                 <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 6 }}>
-                  {m.ofertaExpiraEn && new Date(m.ofertaExpiraEn).getTime() <= Date.now() ? "Esta oferta venció" : "Superada por una oferta más reciente"}
+                  {m.ofertaExpiraEn && new Date(m.ofertaExpiraEn).getTime() <= Date.now()
+                    ? "Esta oferta venció"
+                    : superada
+                      ? "Superada por una oferta más reciente"
+                      : "El profesional canceló esta oferta"}
                 </Text>
               )}
               {m.ofertaVigente && esCliente && !esMio && modoCobro === "Directo" && (
@@ -1399,6 +1488,8 @@ function BurbujaMensaje({
     // antes de este cambio) queda como "REPROGRAMADA" por compatibilidad.
     const esRealizada = m.visitaVigente && m.visitaEstado === "Realizada";
     const esCancelada = !m.visitaVigente && m.visitaEstado === "Cancelada";
+    // 02/11: no se puede marcar como realizada antes de la hora de la visita (el backend también lo bloquea).
+    const visitaYaEmpezo = !fecha || fecha.getTime() <= Date.now();
     const colorBorde = esRealizada ? "#059669" : m.visitaVigente ? colors.copper : colors.border;
     const colorHeader = esRealizada ? "#059669" : m.visitaVigente ? colors.copper : `${colors.ink}1A`;
     const colorTextoHeader = esRealizada || m.visitaVigente ? colors.paper : colors.inkMuted;
@@ -1464,7 +1555,7 @@ function BurbujaMensaje({
           )}
           {m.visitaVigente && m.visitaEstado === "Programada" && (
             <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-              {esPrestador && (
+              {esPrestador && visitaYaEmpezo && (
                 <Pressable
                   onPress={onMarcarVisitaRealizada}
                   disabled={marcandoVisitaRealizada}

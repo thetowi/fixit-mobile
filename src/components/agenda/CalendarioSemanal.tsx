@@ -161,7 +161,12 @@ export default function CalendarioSemanal({
         })}
       </View>
 
-      <Text style={[styles.subtitulo, { color: colors.inkMuted }]}>TURNOS DE HOY</Text>
+      {/* 02/11: decía «Turnos de hoy» aunque se hubiera elegido otro día. */}
+      <Text style={[styles.subtitulo, { color: colors.inkMuted }]}>
+        {fechaHoyEsIgual(diaSel, hoy)
+          ? "TURNOS DE HOY"
+          : `TURNOS DEL ${diaSel.toLocaleDateString("es-AR", { weekday: "long", day: "numeric" }).toUpperCase()}`}
+      </Text>
       {turnosDia.length === 0 ? (
         <Text style={{ color: colors.inkMuted, fontSize: 13, marginBottom: 18 }}>No tenés turnos agendados este día.</Text>
       ) : (

@@ -75,7 +75,7 @@ export default function GananciasSeccion({ onIrAMiPlan }: { onIrAMiPlan?: () => 
     <View style={[styles.tarjeta, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <Text style={[styles.titulo, { color: colors.ink }]}>Ganancias</Text>
       <Text style={{ color: colors.inkMuted, fontSize: 12, marginBottom: 14 }}>
-        Lo que ganaste con tus trabajos completados, según el modelo de retención de FixIt.
+        Lo que cobraste por tus trabajos confirmados en Oficy. El pago lo recibís directo del cliente.
       </Text>
 
       {/* Selector de período */}

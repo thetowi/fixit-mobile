@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ChevronLeft } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiFetch, ApiError } from "@/lib/api";
 import { useFixitColors } from "@/hooks/use-fixit-colors";
@@ -31,7 +32,13 @@ export default function ExplorarCategoriaScreen() {
 
   return (
     <View style={[styles.pantalla, { backgroundColor: colors.paper, paddingTop: insets.top + 20 }]}>
-      <Text style={[styles.titulo, { color: colors.ink }]}>{nombre ?? "Prestadores disponibles"}</Text>
+      {/* 02/11: faltaba una forma visible de volver (solo funcionaba el «atrás» del sistema). */}
+      <View style={styles.encabezado}>
+        <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Volver">
+          <ChevronLeft size={24} color={colors.ink} />
+        </Pressable>
+        <Text style={[styles.titulo, { color: colors.ink }]}>{nombre ?? "Prestadores disponibles"}</Text>
+      </View>
 
       {cargando ? (
         <ActivityIndicator color={colors.copper} style={{ marginTop: 24 }} />
@@ -51,12 +58,20 @@ export default function ExplorarCategoriaScreen() {
               style={[styles.tarjeta, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => router.push(`/prestador/${p.id}`)}
             >
-              <View style={styles.avatar}>
-                <Text style={[styles.avatarTexto, { color: colors.ink }]}>
-                  {p.nombre[0]}
-                  {p.apellido[0]}
-                </Text>
-              </View>
+              {/* 02/11: se mostraban siempre las iniciales aunque el prestador tuviera foto. */}
+              {p.fotoPerfilUrl ? (
+                <Image
+                  source={{ uri: p.fotoPerfilUrl }}
+                  style={styles.avatar}
+                />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={[styles.avatarTexto, { color: colors.ink }]}>
+                    {p.nombre[0]}
+                    {p.apellido[0]}
+                  </Text>
+                </View>
+              )}
 
               <View style={styles.info}>
                 <View style={styles.nombreFila}>
@@ -101,7 +116,8 @@ export default function ExplorarCategoriaScreen() {
 
 const styles = StyleSheet.create({
   pantalla: { flex: 1, paddingTop: 60, paddingHorizontal: 20 },
-  titulo: { fontSize: 20, fontWeight: "700", marginBottom: 16 },
+  encabezado: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
+  titulo: { fontSize: 20, fontWeight: "700", flex: 1 },
   error: { color: "#C0392B", marginTop: 20 },
   vacio: { fontSize: 14, marginTop: 8 },
   tarjeta: {

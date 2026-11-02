@@ -1,4 +1,6 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import Constants from "expo-constants";
+import { rutaAppDesdeUrlWeb } from "@/lib/rutasNotificacion";
 import { useEffect } from "react";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -22,6 +24,37 @@ function NavegacionSegunSesion() {
   useEffect(() => {
     if (!cargando) SplashScreen.hideAsync();
   }, [cargando]);
+
+  // 02/11: tocar un push abre la pantalla que corresponde (antes solo abría la app donde
+  // estaba). Cubre la app abierta/en segundo plano (listener) y la app cerrada del todo
+  // (getLastNotificationResponseAsync al arrancar). expo-notifications se carga con require() y
+  // nunca en Expo Go, por lo mismo que en lib/pushNotifications.ts.
+  const router = useRouter();
+  useEffect(() => {
+    if (cargando || !usuario || Constants.appOwnership === "expo") return;
+    let Notifications: typeof import("expo-notifications");
+    try {
+      Notifications = require("expo-notifications") as typeof import("expo-notifications");
+    } catch {
+      return;
+    }
+    const abrir = (respuesta: import("expo-notifications").NotificationResponse | null) => {
+      const url = respuesta?.notification.request.content.data?.url as string | undefined;
+      const ruta = rutaAppDesdeUrlWeb(url);
+      if (ruta) router.push(ruta as never);
+    };
+    Notifications.getLastNotificationResponseAsync()
+      .then((r) => {
+        if (r) {
+          abrir(r);
+          Notifications.clearLastNotificationResponseAsync?.().catch(() => {});
+        }
+      })
+      .catch(() => {});
+    const sub = Notifications.addNotificationResponseReceivedListener(abrir);
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargando, usuario?.id]);
 
   // Mientras se lee la sesión guardada de SecureStore, el splash nativo se queda en pantalla
   // (no se llamó a hideAsync todavía) — evita un parpadeo mostrando /login antes de saber si en

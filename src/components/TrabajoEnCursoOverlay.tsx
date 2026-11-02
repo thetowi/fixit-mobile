@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronDown, ChevronRight, type LucideIcon } from "lucide-react-native";
 import Animated, {
@@ -289,8 +289,13 @@ export default function TrabajoEnCursoOverlay() {
         >
         <View style={styles.encabezado}>
           <View style={styles.pillEnVivo}>
-            <Animated.View style={[styles.puntoVivo, parpadeo]} />
-            <Text style={styles.textoEnVivo}>EN VIVO</Text>
+            {/* 02/11: en pausa o con «Terminé» ya no está «en vivo». */}
+            {!ordenEnCurso.pausadoEn && !ordenEnCurso.terminadoPorPrestadorEn && (
+              <Animated.View style={[styles.puntoVivo, parpadeo]} />
+            )}
+            <Text style={styles.textoEnVivo}>
+              {ordenEnCurso.pausadoEn ? "PAUSADO" : ordenEnCurso.terminadoPorPrestadorEn ? "TERMINADO" : "EN VIVO"}
+            </Text>
           </View>
           <Pressable
             onPress={minimizar}
@@ -346,7 +351,18 @@ export default function TrabajoEnCursoOverlay() {
                   </View>
                 )}
                 <Pressable
-                  onPress={finalizarTrabajo}
+                  onPress={() =>
+                    // 02/11: confirmar el trabajo le registra el cargo al prestador; un toque por
+                    // error no tiene vuelta atrás, así que se pide confirmación.
+                    Alert.alert(
+                      "¿Confirmás que el trabajo terminó?",
+                      "Confirmalo solo si quedó bien. Después vas a poder calificar al profesional.",
+                      [
+                        { text: "Cancelar", style: "cancel" },
+                        { text: "Sí, confirmar", onPress: () => void finalizarTrabajo() },
+                      ]
+                    )
+                  }
                   disabled={finalizando}
                   style={[styles.botonFinalizar, finalizando && { opacity: 0.6 }]}
                 >
@@ -538,7 +554,9 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   puntoEspera: { width: 6, height: 6, borderRadius: 999, backgroundColor: PAPER },
-  esperaTexto: { flex: 1, fontSize: 13, color: PAPER, opacity: 0.75, lineHeight: 18 },
+  // 02/11: sin flex: 1. Dentro de las cajas con columna (pausado / terminado) el flex: 1 dejaba
+  // el texto con alto 0 en Android y la caja se veía vacía. Donde va en fila se agrega aparte.
+  esperaTexto: { fontSize: 13, color: PAPER, opacity: 0.75, lineHeight: 18 },
   error: { color: "#F87171", fontSize: 13, textAlign: "center" },
   botonPausar: {
     width: "100%",

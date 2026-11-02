@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LogOut, Moon, Sun } from "lucide-react-native";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -86,6 +86,17 @@ export default function CuentaScreen() {
     cargarPerfil();
   }, []);
 
+  // 02/11: las solicitudes de repost solo se cargaban al abrir la app; si llegaba una con la app
+  // abierta no aparecía. Ahora se vuelven a pedir cada vez que se entra a Cuenta.
+  useFocusEffect(
+    useCallback(() => {
+      if (perfil?.rol !== "Cliente") return;
+      apiFetch<RepostoPendiente[]>("/api/repostos/pendientes")
+        .then(setPendientesRepost)
+        .catch(() => {});
+    }, [perfil?.rol])
+  );
+
   async function cargarPerfil() {
     try {
       const data = await apiFetch<PerfilPropio>("/api/usuarios/perfil");
@@ -134,6 +145,7 @@ export default function CuentaScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
+        keyboardShouldPersistTaps="handled"
         style={{ backgroundColor: colors.paper }}
         contentContainerStyle={[styles.contenido, { paddingTop: insets.top + 20 }]}
       >

@@ -5,7 +5,6 @@ import {
   Alert,
   FlatList,
   Image,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -69,6 +68,12 @@ export default function PerfilPrestadorScreen() {
   const [iniciandoChat, setIniciandoChat] = useState<number | null>(null);
   const [soloConFotos, setSoloConFotos] = useState(false);
   const [fotoModalAbierta, setFotoModalAbierta] = useState(false);
+  // 02/11: las fotos de trabajos se abrían en Chrome (fuera de la app); ahora usan el mismo visor.
+  const [fotoTrabajoUrl, setFotoTrabajoUrl] = useState<string | null>(null);
+  const cerrarFoto = () => {
+    setFotoModalAbierta(false);
+    setFotoTrabajoUrl(null);
+  };
   const [solicitandoRepost, setSolicitandoRepost] = useState<string | null>(null);
   const [repostSolicitados, setRepostSolicitados] = useState<Set<string>>(new Set());
 
@@ -319,7 +324,11 @@ export default function PerfilPrestadorScreen() {
                 renderItem={({ item }) => (
                   <Pressable
                     style={[styles.fotoTrabajo, { backgroundColor: `${colors.ink}0D` }]}
-                    onPress={() => item.url && Linking.openURL(item.url)}
+                    onPress={() => {
+                      if (!item.url) return;
+                      setFotoTrabajoUrl(item.url);
+                      setFotoModalAbierta(true);
+                    }}
                   >
                     <Image source={{ uri: item.url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                     {item.esDeResenia && (
@@ -436,13 +445,13 @@ export default function PerfilPrestadorScreen() {
       </ScrollView>
 
       {/* ---- Foto de perfil ampliada (mismo patrón que el lightbox del chat / Mi cuenta) ---- */}
-      <Modal visible={fotoModalAbierta} transparent animationType="fade" onRequestClose={() => setFotoModalAbierta(false)}>
-        <Pressable style={styles.fondoLightbox} onPress={() => setFotoModalAbierta(false)}>
-          {perfil.fotoPerfilUrl && (
-            <Image source={{ uri: perfil.fotoPerfilUrl }} style={styles.fotoAmpliada} resizeMode="contain" />
+      <Modal visible={fotoModalAbierta} transparent animationType="fade" onRequestClose={cerrarFoto}>
+        <Pressable style={styles.fondoLightbox} onPress={cerrarFoto}>
+          {(fotoTrabajoUrl ?? perfil.fotoPerfilUrl) && (
+            <Image source={{ uri: (fotoTrabajoUrl ?? perfil.fotoPerfilUrl)! }} style={styles.fotoAmpliada} resizeMode="contain" />
           )}
           <Pressable
-            onPress={() => setFotoModalAbierta(false)}
+            onPress={cerrarFoto}
             style={[styles.botonCerrarLightbox, { top: insets.top + 12 }]}
             hitSlop={12}
           >

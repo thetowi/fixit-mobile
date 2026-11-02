@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Bell, CalendarDays, Search } from "lucide-react-native";
@@ -153,7 +153,10 @@ function InicioPrestador() {
   // trabajo... visualmente más llamativo, tipo alerta"). Se calcula aparte de trabajosHoy (que
   // sigue alimentando la lista de abajo sin cambios) para no mostrar como "aviso" algo cancelado
   // o que ya se completó, aunque haya sido programado para hoy.
-  const trabajosHoyActivos = trabajosHoy.filter((t) => t.estado !== "Cancelado" && t.estado !== "Completado");
+  // 02/11: también se excluyen las visitas canceladas o ya realizadas.
+  const trabajosHoyActivos = trabajosHoy.filter(
+    (t) => t.estado !== "Cancelado" && t.estado !== "Completado" && t.estado !== "Cancelada" && t.estado !== "Realizada"
+  );
   const avisoHoy = trabajosHoyActivos[0] ?? null;
   const masTrabajosHoy = trabajosHoyActivos.length - 1;
   const proximosSemana = trabajosSemana
@@ -176,6 +179,7 @@ function InicioPrestador() {
 
   return (
     <ScrollView
+      keyboardShouldPersistTaps="handled"
       style={{ flex: 1, backgroundColor: colors.paper }}
       contentContainerStyle={{ paddingBottom: 32 }}
       refreshControl={
@@ -427,6 +431,7 @@ function InicioCliente() {
 
   return (
     <ScrollView
+      keyboardShouldPersistTaps="handled"
       style={{ flex: 1, backgroundColor: colors.paper }}
       contentContainerStyle={{ paddingBottom: 32 }}
       refreshControl={
@@ -504,11 +509,15 @@ function InicioCliente() {
                   onPress={() => router.push(`/prestador/${o.prestadorId}`)}
                   style={[styles.tarjetaPrestador, { backgroundColor: colors.surface }]}
                 >
-                  <View style={[styles.avatar, { backgroundColor: colorCategoria(o.categoriaNombre) + "26" }]}>
-                    <Text style={[styles.avatarTexto, { color: colorCategoria(o.categoriaNombre) }]}>
-                      {iniciales(o.prestadorNombreCompleto)}
-                    </Text>
-                  </View>
+                  {o.prestadorFotoPerfilUrl ? (
+                    <Image source={{ uri: o.prestadorFotoPerfilUrl }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatar, { backgroundColor: colorCategoria(o.categoriaNombre) + "26" }]}>
+                      <Text style={[styles.avatarTexto, { color: colorCategoria(o.categoriaNombre) }]}>
+                        {iniciales(o.prestadorNombreCompleto)}
+                      </Text>
+                    </View>
+                  )}
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={[styles.nombrePrestador, { color: colors.ink }]} numberOfLines={1}>
                       {o.prestadorNombreCompleto}

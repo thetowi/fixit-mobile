@@ -413,6 +413,7 @@ export default function OrdenesScreen() {
       <ScrollView
         style={{ backgroundColor: colors.paper }}
         contentContainerStyle={[styles.contenido, { paddingTop: insets.top + 20 }]}
+        keyboardShouldPersistTaps="handled"
       >
       <Text style={[styles.h1, { color: colors.ink }]}>Mis órdenes</Text>
 
@@ -466,7 +467,7 @@ export default function OrdenesScreen() {
           return (
             <OrdenTicket key={o.id} orden={o} nombreContraparte={nombreContraparte}>
               <View style={styles.acciones}>
-                {esPrestador && (o.estado === "Pagado" || o.estado === "Aceptada") && (
+                {esPrestador && (o.estado === "Pagado" || o.estado === "Aceptada") && !o.terminadoPorPrestadorEn && (
                   <Pressable
                     onPress={() => handleAccion(o.id, "iniciar")}
                     style={[styles.botonAccion, { backgroundColor: colors.ink }]}
@@ -477,7 +478,18 @@ export default function OrdenesScreen() {
 
                 {esCliente && ESTADOS_ABIERTOS.includes(o.estado) && (
                   <Pressable
-                    onPress={() => handleAccion(o.id, "completar")}
+                    onPress={() =>
+                      // 02/11: confirmar le registra el cargo al prestador; se pide confirmación
+                      // para que un toque por error no lo cierre.
+                      Alert.alert(
+                        "¿Confirmás que el trabajo terminó?",
+                        "Confirmalo solo si quedó bien. Después vas a poder calificar al profesional.",
+                        [
+                          { text: "Cancelar", style: "cancel" },
+                          { text: "Sí, confirmar", onPress: () => handleAccion(o.id, "completar") },
+                        ]
+                      )
+                    }
                     style={[styles.botonAccion, { backgroundColor: colors.ink }]}
                   >
                     <Text style={{ color: colors.paper, fontSize: 12, fontWeight: "600" }}>Confirmar terminado</Text>
@@ -499,7 +511,7 @@ export default function OrdenesScreen() {
                   </Pressable>
                 )}
 
-                {esPrestador && (o.estado === "Aceptada" || o.estado === "Pagado" || o.estado === "EnCurso") && !o.checkInEn && (
+                {esPrestador && (o.estado === "Aceptada" || o.estado === "Pagado" || o.estado === "EnCurso") && !o.checkInEn && !o.terminadoPorPrestadorEn && (
                   <Pressable
                     onPress={() => handleLlegue(o.id)}
                     disabled={procesandoId === o.id}
@@ -649,7 +661,7 @@ export default function OrdenesScreen() {
                 </Text>
               )}
 
-              {esPrestador && ordenCodigo === o.id && (
+              {esPrestador && ordenCodigo === o.id && !o.codigoCierreBloqueado && (
                 <View style={[styles.formCalificacion, { borderTopColor: colors.border }]}>
                   <Text style={{ color: colors.inkMuted, fontSize: 11 }}>
                     Pedile al cliente el código de 4 dígitos que ve en su orden.
@@ -913,7 +925,8 @@ export default function OrdenesScreen() {
 
 const styles = StyleSheet.create({
   centro: { flex: 1, alignItems: "center", justifyContent: "center" },
-  contenido: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 40 },
+  // 02/11: más espacio abajo para que el botón flotante de Mensajes no tape la última acción.
+  contenido: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 110 },
   h1: { fontSize: 22, fontWeight: "700", marginBottom: 12 },
   filtros: { flexDirection: "row", gap: 8, marginBottom: 16, flexWrap: "wrap" },
   error: { color: "#C0392B", fontSize: 13, marginBottom: 10 },

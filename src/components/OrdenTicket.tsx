@@ -48,7 +48,7 @@ export default function OrdenTicket({
   return (
     <View style={[styles.tarjeta, { backgroundColor: colors.paper, borderColor: colors.border }]}>
       <View style={[styles.badge, { borderColor: colorClase }]}>
-        <Text style={[styles.badgeTexto, { color: colorClase }]}>
+        <Text style={[styles.badgeTexto, { color: colorClase }]} maxFontSizeMultiplier={1.3}>
           {(ESTADO_LABELS[orden.estado] ?? orden.estado).toUpperCase()}
         </Text>
       </View>
@@ -87,7 +87,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   badgeTexto: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
-  numero: { fontSize: 10, marginBottom: 4 },
+  // 02/11: con letra grande el número de orden quedaba debajo de la etiqueta de estado.
+  numero: { fontSize: 10, marginBottom: 4, paddingRight: 110 },
   descripcion: { fontSize: 14, fontWeight: "600", paddingRight: 90 },
   subtitulo: { fontSize: 12, marginTop: 2, marginBottom: 10 },
   filaInferior: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

@@ -149,11 +149,11 @@ function BotonMensajes({
               justifyContent: "center",
             }}
           >
-            <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "700" }}>{textoNoLeidos}</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "700" }} maxFontSizeMultiplier={1.2}>{textoNoLeidos}</Text>
           </View>
         )}
       </Animated.View>
-      <Text style={{ fontSize: 10.5, fontWeight: "700", color: colors.onNav, marginTop: 2 }}>Mensajes</Text>
+      <Text style={{ fontSize: 10.5, fontWeight: "700", color: colors.onNav, marginTop: 2 }} maxFontSizeMultiplier={1.2} numberOfLines={1}>Mensajes</Text>
     </Pressable>
   );
 }
@@ -259,7 +259,7 @@ function BarraDePestañas({ state, descriptors, navigation }: BottomTabBarProps)
             style={{ flex: 1, alignItems: "center", gap: 3 }}
           >
             {Icono?.({ color, size: 22 })}
-            <Text style={{ fontSize: 10.5, fontWeight: focused ? "700" : "600", color }}>
+            <Text style={{ fontSize: 10.5, fontWeight: focused ? "700" : "600", color }} maxFontSizeMultiplier={1.2} numberOfLines={1}>
               {TITULOS[route.name] ?? route.name}
             </Text>
           </Pressable>

@@ -10,6 +10,8 @@ export interface Orden {
   id: string;
   prestadorId: string;
   prestadorNombreCompleto: string;
+  // 02/11: foto del prestador, para el avatar de "Volver a contratar".
+  prestadorFotoPerfilUrl?: string | null;
   clienteId: string;
   clienteNombreCompleto: string;
   categoriaId: number;
