@@ -57,11 +57,11 @@ export default function NotificacionesScreen() {
 
   async function abrirNotificacion(n: Notificacion) {
     if (!n.leida) {
-      setNotificaciones((prev) => {
-        const actualizadas = prev.map((x) => (x.id === n.id ? { ...x, leida: true } : x));
-        actualizarConteoDesde(actualizadas);
-        return actualizadas;
-      });
+      // 02/11: el contador global se actualiza fuera del setState (adentro del updater React
+      // avisaba "Cannot update a component while rendering a different component").
+      const actualizadas = notificaciones.map((x) => (x.id === n.id ? { ...x, leida: true } : x));
+      setNotificaciones(actualizadas);
+      actualizarConteoDesde(actualizadas);
       apiFetch(`/api/notificaciones/${n.id}/marcar-leida`, { method: "PUT" }).catch(() => {});
     }
     // 02/11: la URL viene con la ruta de la web; se traduce a la de la app (ver rutasNotificacion.ts).

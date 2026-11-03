@@ -16,6 +16,7 @@ export interface Mensaje {
   descripcionOferta: string | null;
   ofertaVigente: boolean;
   ofertaExpiraEn: string | null;
+  ofertaCanceladaEn?: string | null; // 02/11: si el prestador la canceló (antes no se distinguía de "superada")
   ofertaPagada: boolean;
   // Fecha en que se agendó/reprogramó el turno de la Orden de esta oferta (24/09) — ver
   // FixIt.Domain.Entities.Mensaje.OfertaAgendadaEn en el backend.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -476,9 +476,13 @@ export default function ConversacionScreen() {
   // banner recién mide su alto real después de que ya se intentó scrollear al final, el scroll
   // queda corto por exactamente la altura del banner. Fix: además de disparar en `mensajes.length`,
   // el banner llama a este mismo scroll en su propio onLayout (ver más abajo).
+  // 02/11 (2): la lista ahora es `inverted` (patrón estándar de chat), así que "el final" (el
+  // mensaje más nuevo) es el offset 0 y el chat siempre abre abajo, sin depender de medir el alto.
   function scrollAlFinal(animado: boolean) {
-    listaRef.current?.scrollToEnd({ animated: animado });
+    listaRef.current?.scrollToOffset({ offset: 0, animated: animado });
   }
+
+  const mensajesInvertidos = useMemo(() => [...mensajes].reverse(), [mensajes]);
 
   useEffect(() => {
     if (mensajes.length > 0) requestAnimationFrame(() => scrollAlFinal(true));
@@ -901,14 +905,17 @@ export default function ConversacionScreen() {
         )}
         <FlatList
           ref={listaRef}
-          data={mensajes}
+          data={mensajesInvertidos}
+          inverted
           keyExtractor={(m) => m.id}
           style={{ backgroundColor: "transparent" }}
           contentContainerStyle={{ padding: 14, gap: 8 }}
-          onContentSizeChange={() => scrollAlFinal(false)}
-          // 02/11: con chats largos la lista virtualizada no llegaba a medir todo y el scroll al
-          // final quedaba corto. Se renderizan todos de entrada (los chats son de a cientos, no miles).
-          initialNumToRender={Math.max(30, mensajes.length)}
+          // 02/11 (2): sin onContentSizeChange — con `inverted` la lista ya arranca abajo, y ese
+          // handler la devolvía al final cada vez que se renderizaban mensajes viejos al scrollear
+          // para arriba (no dejaba leer el historial).
+          // 02/11: con chats largos el scroll al final quedaba corto (al abrir desde un push abría
+          // arriba de todo). Con `inverted` la lista arranca en el mensaje más nuevo.
+          initialNumToRender={30}
           // 02/11: con el teclado abierto, el primer toque en un botón solo cerraba el teclado.
           keyboardShouldPersistTaps="handled"
           renderItem={({ item: m }) => (
@@ -1375,7 +1382,9 @@ function BurbujaMensaje({
             <>
               {!m.ofertaVigente && (
                 <Text style={{ color: colors.inkMuted, fontSize: 11, marginTop: 6 }}>
-                  {m.ofertaExpiraEn && new Date(m.ofertaExpiraEn).getTime() <= Date.now()
+                  {m.ofertaCanceladaEn
+                    ? "El profesional canceló esta oferta"
+                    : m.ofertaExpiraEn && new Date(m.ofertaExpiraEn).getTime() <= Date.now()
                     ? "Esta oferta venció"
                     : superada
                       ? "Superada por una oferta más reciente"

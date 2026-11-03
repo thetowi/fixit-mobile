@@ -656,8 +656,10 @@ export default function OrdenesScreen() {
 
               {esPrestador && ESTADOS_ABIERTOS.includes(o.estado) && o.codigoCierreBloqueado && (
                 <Text style={[styles.notaOrden, { color: "#C0392B" }]}>
-                  El código se bloqueó por demasiados intentos. Marcá el trabajo como terminado y pedile al cliente que lo
-                  confirme desde la app.
+                  {/* 03/11: si ya marcó "Terminé", no tiene sentido pedirle que lo marque de nuevo. */}
+                  {o.terminadoPorPrestadorEn
+                    ? "El código se bloqueó por demasiados intentos. Pedile al cliente que confirme el trabajo desde la app (si no responde, se confirma solo a las 72 horas)."
+                    : "El código se bloqueó por demasiados intentos. Marcá el trabajo como terminado y pedile al cliente que lo confirme desde la app."}
                 </Text>
               )}
 

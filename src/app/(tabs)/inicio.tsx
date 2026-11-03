@@ -153,9 +153,14 @@ function InicioPrestador() {
   // trabajo... visualmente más llamativo, tipo alerta"). Se calcula aparte de trabajosHoy (que
   // sigue alimentando la lista de abajo sin cambios) para no mostrar como "aviso" algo cancelado
   // o que ya se completó, aunque haya sido programado para hoy.
-  // 02/11: también se excluyen las visitas canceladas o ya realizadas.
+  // 02/11: también se excluyen las visitas canceladas o ya realizadas y las órdenes en disputa.
   const trabajosHoyActivos = trabajosHoy.filter(
-    (t) => t.estado !== "Cancelado" && t.estado !== "Completado" && t.estado !== "Cancelada" && t.estado !== "Realizada"
+    (t) =>
+      t.estado !== "Cancelado" &&
+      t.estado !== "Completado" &&
+      t.estado !== "EnDisputa" &&
+      t.estado !== "Cancelada" &&
+      t.estado !== "Realizada"
   );
   const avisoHoy = trabajosHoyActivos[0] ?? null;
   const masTrabajosHoy = trabajosHoyActivos.length - 1;
@@ -415,7 +420,10 @@ function InicioCliente() {
         o.fechaHoraProgramada &&
         esMismoDia(new Date(o.fechaHoraProgramada), hoy) &&
         o.estado !== "Cancelado" &&
-        o.estado !== "Completado"
+        o.estado !== "Completado" &&
+        // 02/11: tampoco las que están en disputa o que el prestador ya marcó como terminadas.
+        o.estado !== "EnDisputa" &&
+        !o.terminadoPorPrestadorEn
     )
     .sort((a, b) => new Date(a.fechaHoraProgramada!).getTime() - new Date(b.fechaHoraProgramada!).getTime());
   const avisoHoy = trabajosHoyActivos[0] ?? null;
